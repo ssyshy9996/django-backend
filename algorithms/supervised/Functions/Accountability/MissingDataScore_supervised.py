@@ -6,8 +6,13 @@ def get_missing_data_score_supervised(model=None, training_dataset=not None, tes
     from algorithms.supervised.Functions.Accountability.helpers_supervised_accountability import accountabiltiy_parameter_file_loader
     foo = accountabiltiy_parameter_file_loader(
         metric_function_name=metric_fname, training_dataset=training_dataset, test_dataset=test_dataset, mappings=mappings)
-    info, np, result, training_dataset, test_dataset, missing_data_mappings = foo['info'], foo['np'], foo['result'], foo['data'][
-        'training_dataset'], foo['data']['test_dataset'], foo['data']['mappings']["accountability"]["score_missing_data"]["mappings"]["value"]
+    info, np, result, training_dataset, test_dataset,  = foo['info'], foo['np'], foo['result'], foo['data'][
+        'training_dataset'], foo['data']['test_dataset'] 
+    try:
+        missing_data_mappings=foo['data']['mappings']["accountability"]["score_missing_data"]["mappings"]["value"]
+    except:
+        missing_data_mappings=foo['data']['mappings']["methodology"]["score_missing_data"]["mappings"]["value"]
+
     try:
         missing_values = training_dataset.isna().sum().sum() + \
             test_dataset.isna().sum().sum()

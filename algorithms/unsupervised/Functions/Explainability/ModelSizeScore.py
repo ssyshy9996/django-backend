@@ -5,9 +5,18 @@ def model_size_score(model=None, training_dataset=None, test_dataset=None, facts
     test_data=pd.read_csv(test_dataset)
     result = collections.namedtuple('result', 'score properties')
     info = collections.namedtuple('info', 'description value')
-
-    dist_score = 5- np.digitize(test_data.shape[1], thresholds, right=True)
-
+    print("THRESHOLD: ",thresholds)
+    try:
+        if (not thresholds):
+            thresholds=np.array([10,30,100,500])
+    except:
+        pass
+    try:
+        print("THRESHOLDS: ",thresholds)
+        dist_score = 5- np.digitize(test_data.shape[1], thresholds, right=True)
+    except:
+        print("TEST DATA SHAPE ",test_data.shape[1])
+        print("dist score ",dist_score)
     if print_details:
         print("\t MODEL SIZE DETAILS")
         print("\t num of features: ", test_data.shape[1])

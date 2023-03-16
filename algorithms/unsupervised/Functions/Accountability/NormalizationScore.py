@@ -5,8 +5,12 @@ def normalization_score(model=None, training_dataset=None, test_dataset=None, fa
     factsheet=pd.read_json(factsheet)
     mappings=pd.read_json(mappings)
     
-    mappings=mappings["accountability"]["score_normalization"]["mappings"]["value"]
-    
+    print('normalization score called')
+    try:
+        mappings=mappings["accountability"]["score_normalization"]["mappings"]["value"]
+    except:
+        mappings=mappings["methodology"]["score_normalization"]["mappings"]["value"]
+
 
     import numpy as np
     import collections

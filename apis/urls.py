@@ -23,6 +23,8 @@ urlpatterns = [
     # path('datalist2/<str:id>',views.dataList2.as_view()),
     # path('datalist2',views.dataList2.as_view()),
 
+     path('api/scenario/', views.ScenarioList.as_view()),
+     path('api/solution/', views.SolutionList.as_view()),
     # 1)Accountability Scores
     path('api/factsheet_completness_score/',
          views.get_factsheet_completness_score),
@@ -105,7 +107,9 @@ urlpatterns = [
 
     path('api/solution_detail/<int:id>',
          views.solutiondetail.as_view(), name="solutiondetail"),
-    path('api/solution_detail', views.solutiondetail.as_view(), name="solutiondetail")
+    path('api/solution_detail', views.solutiondetail.as_view(),
+         name="solutiondetail"),
+    path('api/auth', views.auth.as_view(), name="auth")
     # path('api/user/<str:id>',views.user.as_view()),
     # path('dataDetail/<int:pk>/', views.dataDetail.as_view()),
 

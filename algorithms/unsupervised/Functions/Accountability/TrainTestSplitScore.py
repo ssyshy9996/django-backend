@@ -19,8 +19,10 @@ def train_test_split_score(model=None, training_dataset=None, test_dataset=None,
         n_test = len(test_dataset)
         n = n_train + n_test
         return round(n_train/n*100), round(n_test/n*100)
-    
-    mappings=mappings["accountability"]["score_train_test_split"]["mappings"]["value"]
+    try:
+        mappings=mappings["accountability"]["score_train_test_split"]["mappings"]["value"]
+    except:
+        mappings=mappings["methodology"]["score_train_test_split"]["mappings"]["value"]
 
     try:
         training_data_ratio, test_data_ratio = train_test_split_metric(training_dataset, test_dataset)

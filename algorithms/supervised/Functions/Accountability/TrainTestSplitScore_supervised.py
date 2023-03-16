@@ -4,8 +4,19 @@ def get_train_test_split_score_supervised(model=None, training_dataset=not None,
     from algorithms.supervised.Functions.Accountability.helpers_supervised_accountability import accountabiltiy_parameter_file_loader
     metric_fname = inspect.currentframe().f_code.co_name
     foo = accountabiltiy_parameter_file_loader(metric_function_name=metric_fname, training_dataset=training_dataset,test_dataset=test_dataset,mappings=mappings)
-    info, result, training_dataset,test_dataset,traintestsplit_mappings = foo['info'],foo['result'],foo['data']['training_dataset'],foo['data']['test_dataset'],foo['data']['mappings']["accountability"]["score_train_test_split"]["mappings"]["value"]
-   
+    info, result, training_dataset,test_dataset = foo['info'],foo['result'],foo['data']['training_dataset'],foo['data']['test_dataset']
+
+    # let me check. perhaps you are wrong
+    print('traintestsplitedata_now:', foo["properties"])  
+    try:
+        traintestsplit_mappings=foo['data']['mappings']["accountability"]["score_train_test_split"]["mappings"]["value"]
+    except:
+        try:
+            traintestsplit_mappings=foo['data']['mappings']["methodology"]["score_train_test_split"]["mappings"]["value"] #shouldn'the try except catch the error it checks first for accoutnability then methodology key
+        except:
+            traintestsplit_mappings=foo['data']['properties']["methodology"]["score_train_test_split"]["mappings"]["value"] #shouldn'the try except catch the error it checks first for accoutnability then methodology key
+
+
     def train_test_split_metric(training_dataset, test_dataset):
         n_train,n_test = len(training_dataset),len(test_dataset) 
         n = n_train + n_test

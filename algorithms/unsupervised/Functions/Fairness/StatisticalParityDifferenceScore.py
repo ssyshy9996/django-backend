@@ -5,12 +5,29 @@ def get_statistical_parity_difference_score_unsupervised(model=not None, trainin
     import pandas as pd
     sys.path.extend([r"Backend", r"Backend/algorithms", r"Backend/algorithms/unsupervised", r"Backend/algorithms/unsupervised/Functions", r"Backend/algorithms/unsupervised/Functions/Accountability",
                     r"Backend/algorithms/unsupervised/Functions/Fairness", r"Backend/algorithms/unsupervised/Functions/Explainability", r"Backend/algorithms/unsupervised/Functions/Robustness"])
-    try:
-        from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import read_model
-        from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder, load_fairness_config, detect_outliers, isIsolationForest
-    except:
-        from unsupervised.Functions.Fairness.helpers_fairness_unsupervised import read_model
-        from unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder, load_fairness_config, detect_outliers, isIsolationForest
+    from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder, load_fairness_config, detect_outliers, isIsolationForest
+
+    def read_model(solution_set_path):
+        print("READ MODEL REACHED")
+        import os
+        from joblib import load
+        MODEL_REGEX = "model.*"
+        model_file = solution_set_path
+        file_extension = os.path.splitext(model_file)[1]
+        print("FILE EXTENSION: ",file_extension)
+
+        # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
+        pickle_file_extensions = [".pkl"]
+        if file_extension in pickle_file_extensions:
+            model = pd.read_pickle(model_file)
+            return model
+
+        if (file_extension == ".joblib"):  # Check if a .joblib file needs to be loaded
+            print("model_file: ", model_file)
+            a=load(model_file)
+            print("READ MODEL joblib REACHED")
+            print("READ JOBLIB MODEl: ",a)
+            return a
 
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')
@@ -21,7 +38,7 @@ def get_statistical_parity_difference_score_unsupervised(model=not None, trainin
     model = read_model(model)
     mappings = pd.read_json(mappings)
 
-    if not thresholds:
+    if not thresholds or type(thresholds)==bool:
         thresholds = mappings["fairness"]["score_overfitting"]["thresholds"]["value"]
 
     try:

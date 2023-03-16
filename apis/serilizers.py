@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from .models import Scenario, ScenarioSolution, CustomUser
+from .models import Scenario, ScenarioSolution, CustomUserManager, CustomUser
 
 
 class AllUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CustomUser
+        model = CustomUserManager
         fields = [
             "password",
             "last_login",
@@ -18,6 +18,7 @@ class AllUserSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     # user = serializers.CharField(source='user',read_only=True)
     class Meta:
+        model = CustomUser
         lookup_field = 'slug'
         # fields = ['user','response_data']
         fields = "__all__"

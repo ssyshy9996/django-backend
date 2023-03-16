@@ -1,5 +1,6 @@
 def import_functions_from_folder(folder_name_list):
     import importlib,sys,os,inspect, collections
+    print('foldernamelist:', folder_name_list)
     info = collections.namedtuple('info', 'description value')
     result = collections.namedtuple('result', 'score properties')
     #general+supervised
@@ -23,5 +24,8 @@ def import_functions_from_folder(folder_name_list):
                         function_name = name[4:].lower().replace('_', '')
                         print("FUNCTION NAME: ",function_name)
                         functions[function_name] = obj
+        print('functions:', functions.length)
         pillars_function_list.append(functions)
+        print("result:", pillars_function_list)
     return pillars_function_list
+

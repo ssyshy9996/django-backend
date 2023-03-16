@@ -1,36 +1,62 @@
 def underfitting_score(model=not None, training_dataset=not None, test_dataset=None, factsheet= None, mappings=not None,target_column=None, outliers_data=not None, thresholds= not None, outlier_thresholds= not None,penalty_outlier=  None, outlier_percentage= None, high_cor=None,print_details=None):
     import collections, numpy,sys, pandas as pd
     sys.path.extend([r"Backend",r"Backend/algorithms",r"Backend/algorithms/unsupervised", r"Backend/algorithms/unsupervised/Functions", r"Backend/algorithms/unsupervised/Functions/Accountability",r"Backend/algorithms/unsupervised/Functions/Fairness",r"Backend/algorithms/unsupervised/Functions/Explainability",r"Backend/algorithms/unsupervised/Functions/Robustness"])
-    try:
-        from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import read_model
-        from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder,isIsolationForest
-    except:
-        from unsupervised.Functions.Fairness.helpers_fairness_unsupervised import read_model
-        from unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder,isIsolationForest
+    from algorithms.unsupervised.Functions.Fairness.helpers_fairness_unsupervised import compute_outlier_ratio, get_threshold_mse_iqr, isKerasAutoencoder,isIsolationForest
+
+    def read_model(solution_set_path):
+        print("READ MODEL REACHED")
+        import os
+        from joblib import load
+        MODEL_REGEX = "model.*"
+        model_file = solution_set_path
+        file_extension = os.path.splitext(model_file)[1]
+        print("FILE EXTENSION: ",file_extension)
+
+        # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
+        pickle_file_extensions = [".pkl"]
+        if file_extension in pickle_file_extensions:
+            model = pd.read_pickle(model_file)
+            return model
+
+        if (file_extension == ".joblib"):  # Check if a .joblib file needs to be loaded
+            print("model_file: ", model_file)
+            a=load(model_file)
+            print("READ MODEL joblib REACHED")
+            print("READ JOBLIB MODEl: ",a)
+            return a
 
     info,result = collections.namedtuple('info', 'description value'), collections.namedtuple('result', 'score properties')
     
     training_dataset=pd.read_csv(training_dataset)
+    test_dataset = pd.read_csv(test_dataset)
     outliers_data=pd.read_csv(outliers_data)
     model=read_model(model)
     mappings=pd.read_json(mappings)
-
-    if not thresholds:
+    print("MAPPINGS: ", mappings)
+    print("THRESHOLDS BEFORE: ", thresholds)
+    if not thresholds or type(thresholds)==bool:
         thresholds= mappings["fairness"]["score_underfitting"]["thresholds"]["value"]
     if isKerasAutoencoder(model):
         outlier_thresh = get_threshold_mse_iqr(model, training_dataset)
+    print("Tresholds new value: ",mappings["fairness"]["score_underfitting"]["thresholds"]["value"])
 
     try:
         properties = {}
         properties['Metric Description'] = "Computes the difference of outlier detection ratio in the training and test data."
         properties['Depends on'] = 'Model, Train Data, Test Data'
         score = 0
-
-        detection_ratio_train = compute_outlier_ratio(model=model, data=outliers_data, outlier_thresh=outlier_thresholds)
-        detection_ratio_test = compute_outlier_ratio(model=model, data=outliers_data, outlier_thresh=outlier_thresholds)
-
+        
+        detection_ratio_train = compute_outlier_ratio(model=model, data=training_dataset, outlier_thresh=outlier_thresholds)
+        detection_ratio_test = compute_outlier_ratio(model=model, data=test_dataset, outlier_thresh=outlier_thresholds)
+        print("Test1")
         perc_diff = abs(detection_ratio_train - detection_ratio_test)
+        print("Test2")
+        print("PERC DIFF: ", perc_diff)
+        print("THRESHOLDS: ", thresholds)
+   
+
         score = numpy.digitize(perc_diff, thresholds, right=False) + 1
+        print("Test3")
         print("SCORE: ",score)
         
 

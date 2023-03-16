@@ -2,21 +2,30 @@ def missing_data_score(model=None, training_dataset=None, test_dataset=None, fac
     import numpy as np
     import collections
     
+    print('called here 1')
     import pandas as pd
     training_dataset=pd.read_csv(training_dataset)
     test_dataset=pd.read_csv(test_dataset)
     factsheet=pd.read_json(factsheet)
     mappings=pd.read_json(mappings)
 
+    print('called here 2')
     info = collections.namedtuple('info', 'description value')
     result = collections.namedtuple('result', 'score properties')
     
     try:
         missing_values = training_dataset.isna().sum().sum() + test_dataset.isna().sum().sum()
         if missing_values > 0:
-            score = mappings["accountability"]["score_missing_data"]["mappings"]["value"]["null_values_exist"]
+            try:
+                score = mappings["accountability"]["score_missing_data"]["mappings"]["value"]["null_values_exist"]
+            except:
+                score = mappings["methodology"]["score_missing_data"]["mappings"]["value"]["null_values_exist"]
         else:
-            score = mappings["accountability"]["score_missing_data"]["mappings"]["value"]["no_null_values"]
+            try:
+                score = mappings["accountability"]["score_missing_data"]["mappings"]["value"]["no_null_values"]
+            except:
+                score = mappings["methodology"]["score_missing_data"]["mappings"]["value"]["no_null_values"]
+        print('end call')
         return result(score=score,properties={"dep" :info('Depends on','Training Data'),
             "null_values": info("Number of the null values", "{}".format(missing_values))})
     except:

@@ -1,4 +1,5 @@
 def get_class_balance_score_supervised(model=None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=None,target_column=None, outliers_data=None, thresholds=[0.05, 0.16, 0.28, 0.4], outlier_thresholds=None, outlier_percentage=None, high_cor=0.9,print_details=None):
+    from algorithms.supervised.Functions.Fairness.helpers_fairness_supervised import load_fairness_config
     try:
         import numpy, collections, pandas, tensorflow, algorithms.supervised.Functions.Fairness.helpers_fairness_supervised
     except:

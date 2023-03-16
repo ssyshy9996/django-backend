@@ -1,3 +1,8 @@
+from passlib.handlers.django import django_pbkdf2_sha256
+from rest_framework import permissions
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import api_view, permission_classes
+from django.http import Http404, HttpResponse
 import django.core.files.storage
 from algorithms.unsupervised.Functions.Accountability.NormalizationScore import normalization_score as get_normalization_score_unsupervised
 from algorithms.supervised.Functions.Robustness.CleverScore_supervised import get_clever_score_supervised
@@ -75,7 +80,7 @@ import math
 from django.http import JsonResponse
 import json
 from .models import CustomUser, Scenario, ScenarioSolution
-from .serilizers import UserSerializer, SolutionSerializer
+from .serilizers import UserSerializer, SolutionSerializer,ScenarioSerializer
 # import stripe
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
@@ -103,6 +108,37 @@ def scenario_detail(request, scenarioName, user_id):
     # Query the database for the relevant scenario based on scenarioName and user_id
     scenario = Scenario.objects.get(name=scenarioName, user_id=user_id)
     return render(request, 'scenario_detail.html', {'scenario': scenario})
+
+
+class auth(APIView):
+    def get(self, request):  # when login
+        email = request.query_params['email']
+        password = request.query_params['password']
+        user = CustomUser.objects.get(email=email)
+        password_verify = django_pbkdf2_sha256.verify(password, user.password)
+
+        if (password_verify):
+            return Response({
+                'email': email,
+                'password': password,
+            }, status=200)
+        else:
+            return Response('Login Failed', status=400)
+
+    def post(self, request):  # when register
+        print('register:', request)
+        email = request.data['email']
+        password = request.data['password']
+
+        if email is None or password is None:
+            return Response('register Error', status=400)
+
+        password = make_password(password)
+        print('ne pass:', password)
+        newUser = CustomUser.objects.create(email=email, password=password)
+        newUser.save()
+
+        return Response('register', status=200)
 
 
 # factsheet=pd.read_json(os.path.join(BASE_DIR,r'apis/TestValues/factsheet.json'))
@@ -717,9 +753,8 @@ factsheet = os.path.join(
 # solution_set_path,
 # path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
 # path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
-print("Final Score result:", get_final_score(path_module, path_traindata,
-      path_testdata, config_weights, mappings_config, path_factsheet))
 
+from algorithms.TrustScore.TrustScore import trusting_AI_scores_supervised
 
 result = collections.namedtuple('result', 'score properties')
 FACTSHEET_NAME = "Newfact"
@@ -1141,264 +1176,254 @@ class dashboard(APIView):
         scenarioobj = ScenarioSolution.objects.filter(
             user_id=userexist.id).values().order_by('id')
 
-        def get_final_score(model, train_data, test_data, config_weights, mappings_config, factsheet, recalc=False):
-            mappingConfig1 = mappings_config
+        scenarios = Scenario.objects.filter(user_id=userexist.id).values()
+        uploaddic['scenarioList'] = scenarios
+        uploaddic['solutionList'] = scenarioobj
 
-            with open(mappings_config, 'r') as f:
-                mappings_config = json.loads(f.read())
 
-            config_fairness = mappings_config["fairness"]
-            config_explainability = mappings_config["explainability"]
-            config_robustness = mappings_config["robustness"]
-            config_methodology = mappings_config["methodology"]
+        def unsupervised_FinalScore(model_path, training_dataset_path, test_dataset_path, outliers_dataset_path, facsheet_path, metrics_mappings_path,weights_metrics_path=None, weights_pillars_path=None):
+            from algorithms.TrustScore.TrustScore import trusting_AI_scores_unsupervised as finalScore_unsupervised
+            import pandas as pd
 
-            methodology_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
-            config_explainability = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
-            config_fairness = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
-            config_robustness = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
+            finalScore_unsup = dict_trusting_score_unsup=finalScore_unsupervised(model=model_path, training_dataset=training_dataset_path,
+            test_dataset=test_dataset_path, outliers_data=outliers_dataset_path,factsheet=facsheet_path, mappings= metrics_mappings_path)
+            
+            dict_trusting_score_unsup=dict_trusting_score_unsup[0]
+            print("DICT TRUSTING SCORE Robustness: ", dict_trusting_score_unsup["robustness"])
+            foo1,foo2,foo3,foo4=dict_trusting_score_unsup["accountability"],dict_trusting_score_unsup["explainability"],dict_trusting_score_unsup["fairness"],dict_trusting_score_unsup["robustness"]
+            
+            factsheetcompletness_score, missing_data_score, normalization_score, regularization_score, train_test_split_score=foo1["factsheet_completeness"],foo1["missing_data"],foo1["normalization"],foo1["regularization"], foo1["train_test_split"]
+            
+            print('foo2:', foo2)
+            correlated_features_score,model_size_score, permutation_feature_importance_score=foo2["correlated_features"],foo2["model_size"],foo2["permutation_feature_importance"]
+            
+            disparate_impact_score, overfitting_score, statistical_parity_difference_score, underfitting_score=foo3["disparate_impact"],foo3["overfitting"],foo3["statistical_parity_difference"],foo3["underfitting"]
+            
+            clever_score=foo4["clever_score"]
+            #wait need to find weights metrics for unsup
 
-            def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
-                from algorithms.supervised.Functions.Fairness.FarinessScore_supervised import get_fairness_score_supervised
-                from algorithms.supervised.Functions.Explainability.ExplainabilityScore_supervised import get_explainability_score_supervised
-                from algorithms.supervised.Functions.Robustness.Robustness_supervised import get_robustness_score_supervised
-                from algorithms.supervised.Functions.Accountability.AccountabilityScore_supervised import get_accountability_score_supervised
-                output = dict(
-                    fairness=get_fairness_score_supervised(
-                        model, train_data, test_data, factsheet, config_fairness),
-                    explainability=get_explainability_score_supervised(
-                        model, train_data, test_data, config_explainability, factsheet),
-                    robustness=get_robustness_score_supervised(
-                        model, train_data, test_data, config_robustness, factsheet),
-                    methodology=get_accountability_score_supervised(
-                        model, train_data, test_data, factsheet, methodology_config)
-                )
-                scores = dict((k, v.score) for k, v in output.items())
-                properties = dict((k, v.properties) for k, v in output.items())
-                # factsheet["scores"] = scores
-                # factsheet["properties"] = properties
-                # write_into_factsheet(factsheet, solution_set_path)
-
-                return result(score=scores, properties=properties)
-
-            with open(mappingConfig1, 'r') as f:
-                default_map = json.loads(f.read())
-            # default_map=pd.read_json(mappingConfig1)
-
-            factsheet = os.path.join(BASE_DIR, factsheet)
-            print('url:', factsheet)
-            with open(factsheet, 'r') as g:
-                factsheet = json.loads(g.read())
-            # factsheet=pd.read_json(factsheet)
-
-            scores = []
-            # print("mapping is default:")
-            # print(default_map == mappings_config)
-            print('asdf:', factsheet.keys())
-            if default_map == mappings_config:
-                if "scores" in factsheet.keys() and "properties" in factsheet.keys() and not recalc:
-                    scores = factsheet["scores"]
-                    properties = factsheet["properties"]
+            if (weights_metrics_path is None):
+                weights_metrics_unsup={
+                "fairness": {
+                    "underfitting": 0.35,
+                    "overfitting": 0.15,
+                    "statistical_parity_difference": 0.15,
+                    "disparate_impact": 0.1
+                },
+                "explainability": {
+                    "correlated_features": 0.15,
+                    "model_size": 0.15,
+                    "permutation_feature_importance": 0.15
+                },
+                "robustness": {
+                    "clever_score": 0.2
+                },
+                "methodology": {
+                    "normalization": 0.2,
+                    "missing_data": 0.2,
+                    "regularization": 0.2,
+                    "train_test_split": 0.2,
+                    "factsheet_completeness": 0.2
+                },
+                "pillars": {
+                    "fairness": 0.25,
+                    "explainability": 0.25,
+                    "robustness": 0.25,
+                    "methodology": 0.25
+                }
+            }
             else:
-                result = trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness,
-                                            config_explainability, config_robustness, config_methodology)
-                scores = result.score
-                factsheet["scores"] = scores
-                properties = result.properties
-                factsheet["properties"] = properties
+                weights_metrics_unsup=pd.read_json(weights_metrics_unsup)
 
-            final_scores = dict()
-            # scores = tuple(scores)
-            print("Scores is:", scores)
-            with open(config_weights, 'r') as n:
-                config_weights = json.loads(n.read())
-            # config_weights=pd.read_json(config_weights)
-            # configdict = {}
-            print("Config weight:", config_weights)
+                        
+            if (weights_pillars_path is None):
+                weights_pillars_unsup={"pillars": {
+                    "fairness": 0.25,
+                    "explainability": 0.25,
+                    "robustness": 0.25,
+                    "methodology": 0.25
+                }}
+            else:
+                weights_pillars_unsup=pd.read_json(weights_pillars_unsup)
 
-            fairness_score = 0
-            explainability_score = 0
-            robustness_score = 0
-            methodology_score = 0
-            for pillar in scores.items():
-                # print("Pillars:", pillar)
-                # pillar = {'pillar':pillar}
 
-                if pillar[0] == 'fairness':
-                    # print("Pillar fairness is:", pillar[1])
-                    uploaddic['underfitting'] = int(pillar[1]['underfitting'])
-                    uploaddic['overfitting'] = int(pillar[1]['overfitting'])
-                    uploaddic['statistical_parity_difference'] = int(
-                        pillar[1]['statistical_parity_difference'])
-                    uploaddic['equal_opportunity_difference'] = int(
-                        pillar[1]['equal_opportunity_difference'])
-                    uploaddic['average_odds_difference'] = int(
-                        pillar[1]['average_odds_difference'])
-                    uploaddic['disparate_impact'] = int(
-                        pillar[1]['disparate_impact'])
-                    uploaddic['class_balance'] = int(
-                        pillar[1]['class_balance'])
+            #default weights pillar scores calculations
+            print("DICT WEIGHTS METRICS: ",weights_metrics_unsup)
+            try:
+                foo5=weights_metrics_unsup["accountability"]
+            except:
+                foo5=weights_metrics_unsup["methodology"]
 
-                    fairness_score = int(
-                        pillar[1]['underfitting'])*0.35 + int(pillar[1]['overfitting'])*0.15
-                    + int(pillar[1]['statistical_parity_difference'])*0.15 + \
-                        int(pillar[1]['equal_opportunity_difference'])*0.2
-                    + int(pillar[1]['average_odds_difference']) * \
-                        0.1 + int(pillar[1]['disparate_impact'])*0.1
-                    + int(pillar[1]['class_balance'])*0.1
+            foo6,foo7,foo8=weights_metrics_unsup["explainability"],weights_metrics_unsup["fairness"],weights_metrics_unsup["robustness"]
+            
 
-                    uploaddic['fairness_score'] = fairness_score
-                    print("Fairness Score is:", fairness_score)
+            print("Foo8: ",foo8)
 
-                if pillar[0] == 'explainability':
-                    # print("Pillar explainability is:", pillar[1]['algorithm_class'])
-                    algorithm_class = 0
-                    correlated_features = 0
-                    model_size = 0
-                    feature_relevance = 0
+           
 
-                    if str(pillar[1]['algorithm_class']) != 'nan':
-                        algorithm_class = int(
-                            pillar[1]['algorithm_class'])*0.55
+            accountability_score_unsupervised=foo5["factsheet_completeness"]*factsheetcompletness_score+foo5["missing_data"]*missing_data_score+foo5["normalization"]*normalization_score+foo5["regularization"]*regularization_score+foo5["train_test_split"]*train_test_split_score
+            explainability_score_unsupervised=foo6["correlated_features"]*correlated_features_score+foo6["model_size"]*model_size_score+foo6["permutation_feature_importance"]*permutation_feature_importance_score
+            fairness_score_unsupervised=foo7["underfitting"]*underfitting_score+foo7["overfitting"]*overfitting_score+foo7["statistical_parity_difference"]*statistical_parity_difference_score+ foo7["disparate_impact"]*disparate_impact_score
+            import numpy as np
+            try:
+                robustnesss_score_unsupervised=clever_score
+            except:
+                try:
+                    if(clever_score is None):
+                        clever_score=1
+                except:
+                    pass
+                
+                robustnesss_score_unsupervised=clever_score
+            
+            weights_pillars_unsup=weights_pillars_unsup["pillars"] 
+            try:
+                weight_accountability=weights_pillars_unsup["accountability"]
+            except:
+                weight_accountability=weights_pillars_unsup["methodology"]
 
-                    if str(pillar[1]['correlated_features']) != 'nan':
-                        correlated_features = int(
-                            pillar[1]['correlated_features'])*0.15
+            trust_score_unsupervised=weight_accountability*accountability_score_unsupervised+weights_pillars_unsup["explainability"]*explainability_score_unsupervised+weights_pillars_unsup["fairness"]*fairness_score_unsupervised+weights_pillars_unsup["robustness"]*robustnesss_score_unsupervised
+            
+            dict_accountabiltiy_metric_scores={"Factsheecompletnessscore":factsheetcompletness_score,"Missingdatascore":missing_data_score, "Normalizationscore":normalization_score, "Regularizationscore":regularization_score,"Traintestsplitscore":train_test_split_score}
+            dict_explainabiltiy_metric_scores={"Correlatedfeaturesscore":correlated_features_score,"Modelsizescore":model_size_score,"Permutationfeatureimportancescore":permutation_feature_importance_score}
+            dict_fairness_metric_scores={"Underfittingscore":underfitting_score, "Overfittingscore":overfitting_score,"Statisticalparitydifferencescore":statistical_parity_difference_score,"Disparateimpactscore":disparate_impact_score}            
+            dict_robustness_metric_scores={"Cleverscore":clever_score}
+            
+            dict_metric_scores={"Metricscores":{"Accountabilityscore":dict_accountabiltiy_metric_scores,"Explainabilityscore":dict_explainabiltiy_metric_scores,"Fairnessscore":dict_fairness_metric_scores,"Robustnessscore":dict_robustness_metric_scores}}
+            
+            dict_pillars_scores={"Accountabilityscore":accountability_score_unsupervised,"Explainabilityscore":explainability_score_unsupervised,"Fairnessscore":fairness_score_unsupervised,"Robustnessscore":robustnesss_score_unsupervised}
 
-                    if str(pillar[1]['model_size']) != 'nan':
-                        model_size = int(pillar[1]['model_size'])*5
+            dict_result_unsupervised={"Metricscores":dict_metric_scores,"Pillarscores":dict_pillars_scores,"Trustscore":trust_score_unsupervised}
+            print("DICT RESULT UNSUP: ",dict_result_unsupervised)
+            return dict_result_unsupervised
 
-                    if str(pillar[1]['feature_relevance']) != 'nan':
-                        feature_relevance = int(
-                            pillar[1]['feature_relevance'])*0.15
 
-                    explainability_score = algorithm_class + \
-                        correlated_features + model_size + feature_relevance
+        def finalScore_supervised(model_path, training_dataset_path, test_dataset_path, facsheet_path, metrics_mappings_path,weights_metrics_path=None, weights_pillars_path=None):
+            from algorithms.TrustScore.TrustScore import trusting_AI_scores_supervised
+            import pandas as pd
 
-                    uploaddic['algorithm_class'] = algorithm_class
-                    uploaddic['correlated_features'] = correlated_features
-                    uploaddic['model_size'] = model_size
-                    uploaddic['feature_relevance'] = feature_relevance
-                    uploaddic['explainability_score'] = explainability_score
-                    print("explainability Score is:", explainability_score)
+            finalScore = dict_trusting_score=trusting_AI_scores_supervised(model=model_path, training_dataset=training_dataset_path,
+            test_dataset=test_dataset_path, factsheet=facsheet_path, mappings= metrics_mappings_path)
+            
+            dict_trusting_score=dict_trusting_score[0]
+            print("DICT TRUSTING SCORE Robustness: ", dict_trusting_score["robustness"])
+            foo1,foo2,foo3,foo4=dict_trusting_score["accountability"],dict_trusting_score["explainability"],dict_trusting_score["fairness"],dict_trusting_score["robustness"]
+            factsheetcompletness_score, missing_data_score, normalization_score, regularization_score, train_test_split_score=foo1["factsheet_completeness"],foo1["missing_data"],foo1["normalization"],foo1["regularization"], foo1["train_test_split"]
+            algorithm_class_score, correlated_features_score, feature_relevance_score, model_size_score=foo2["algorithm_class"],foo2["correlated_features"],foo2["feature_relevance"],foo2["model_size"]
+            average_odds_difference_score, class_balance_score, disparate_impact_score, equal_opportunity_score, overfitting_score, statistical_parity_difference_score, underfitting_score=foo3["average_odds_difference"],foo3["class_balance"],foo3["disparate_impact"],foo3["equal_opportunity_difference"],foo3["overfitting"],foo3["statistical_parity_difference"],foo3["underfitting"]
+            clever_score, clique_method_score, confidence_score, er_carlini_wagner_score, er_deep_fool_attack_score, er_fast_gradient_attack_score, loss_sensitivity_score=foo4["clever_score"],foo4["clique_method"],foo4["confidence_score"],foo4["er_carlini_wagner_attack"],foo4["er_deepfool_attack"],foo4["er_fast_gradient_attack"],foo4["loss_sensitivity"]
+            
+            
 
-                if pillar[0] == 'robustness':
-                    # print("Pillar robustness is:", pillar[1])
+            if (weights_metrics_path is None):
+                weights_metrics={
+                "fairness": {
+                    "underfitting": 0.35,
+                    "overfitting": 0.15,
+                    "statistical_parity_difference": 0.15,
+                    "equal_opportunity_difference": 0.2,
+                    "average_odds_difference": 0.1,
+                    "disparate_impact": 0.1,
+                    "class_balance": 0.1
+                },
+                "explainability": {
+                    "algorithm_class": 0.55,
+                    "correlated_features": 0.15,
+                    "model_size": 0.15,
+                    "feature_relevance": 0.15
+                },
+                "robustness": {
+                    "confidence_score": 0.2,
+                    "clique_method": 0.2,
+                    "loss_sensitivity": 0.2,
+                    "clever_score": 0.2,
+                    "er_fast_gradient_attack": 0.2,
+                    "er_carlini_wagner_attack": 0.2,
+                    "er_deepfool_attack": 0.2
+                },
+                "methodology": {
+                    "normalization": 0.2,
+                    "missing_data": 0.2,
+                    "regularization": 0.2,
+                    "train_test_split": 0.2,
+                    "factsheet_completeness": 0.2
+                },
+                "pillars": {
+                    "fairness": 0.25,
+                    "explainability": 0.25,
+                    "robustness": 0.25,
+                    "methodology": 0.25
+                }
+            }
+            else:
+                weights_metrics=pd.read_json(weights_metrics)
 
-                    confidence_score = 0
-                    clique_method = 0
-                    loss_sensitivity = 0
-                    clever_score = 0
-                    er_fast_gradient_attack = 0
-                    er_carlini_wagner_attack = 0
-                    er_deepfool_attack = 0
+                        
+            if (weights_pillars_path is None):
+                weights_pillars={"pillars": {
+                    "fairness": 0.25,
+                    "explainability": 0.25,
+                    "robustness": 0.25,
+                    "methodology": 0.25
+                }}
+            else:
+                weights_pillars=pd.read_json(weights_pillars_path)
 
-                    if str(pillar[1]['confidence_score']) != 'nan':
-                        confidence_score = int(
-                            pillar[1]['confidence_score'])*0.2
 
-                    if str(pillar[1]['clique_method']) != 'nan':
-                        clique_method = int(pillar[1]['clique_method'])*0.2
+            #default weights pillar scores calculations
+            print("DICT WEIGHTS METRICS: ",weights_metrics)
+            try:
+                foo5=weights_metrics["accountability"]
+            except:
+                foo5=weights_metrics["methodology"]
 
-                    if str(pillar[1]['loss_sensitivity']) != 'nan':
-                        loss_sensitivity = int(
-                            pillar[1]['loss_sensitivity'])*0.2
+            foo6,foo7,foo8=weights_metrics["explainability"],weights_metrics["fairness"],weights_metrics["robustness"]
+            
 
-                    if str(pillar[1]['clever_score']) != 'nan':
-                        clever_score = int(pillar[1]['clever_score'])*0.2
+            print("Foo8: ",foo8)
+            accountability_score_supervised=foo5["factsheet_completeness"]*factsheetcompletness_score+foo5["missing_data"]*missing_data_score+foo5["normalization"]*normalization_score+foo5["regularization"]*regularization_score+foo5["train_test_split"]*train_test_split_score
+            explainability_score_supervised=foo6["algorithm_class"]*algorithm_class_score+foo6["correlated_features"]*correlated_features_score+foo6["model_size"]*model_size_score+foo6["feature_relevance"]*feature_relevance_score
+            fairness_score_supervised=foo7["underfitting"]*underfitting_score+foo7["overfitting"]*overfitting_score+foo7["statistical_parity_difference"]*statistical_parity_difference_score+ foo7["equal_opportunity_difference"]*equal_opportunity_score+foo7["average_odds_difference"]*average_odds_difference_score+foo7["disparate_impact"]*disparate_impact_score+foo7["class_balance"]*class_balance_score
+            import numpy as np
+            try:
+                robustnesss_score_supervised=foo8["clever_score"]*clever_score+foo8["clique_method"]*clique_method_score+foo8["confidence_score"]*confidence_score+foo8["er_carlini_wagner_attack"]*er_carlini_wagner_score+foo8["er_deepfool_attack"]*er_deep_fool_attack_score+foo8["er_fast_gradient_attack"]*er_fast_gradient_attack_score+foo8["loss_sensitivity"]*loss_sensitivity_score
 
-                    if str(pillar[1]['er_fast_gradient_attack']) != 'nan':
-                        er_fast_gradient_attack = int(
-                            pillar[1]['er_fast_gradient_attack'])*0.2
+            except:
+                try:
+                    if(clique_method_score is None):
+                        clique_method_score=1
+                except:
+                    pass
+                if(er_carlini_wagner_score is None):
+                    er_carlini_wagner_score=1
+                if(er_deep_fool_attack_score is None):
+                    er_deep_fool_attack_score=1
+                if(er_fast_gradient_attack_score is None):
+                    er_fast_gradient_attack_score = 1
+                if(loss_sensitivity_score is None):
+                    loss_sensitivity_score=1
+                robustnesss_score_supervised=foo8["clever_score"]*clever_score+foo8["clique_method"]*clique_method_score+foo8["er_carlini_wagner_attack"]*er_carlini_wagner_score+foo8["er_deepfool_attack"]*er_deep_fool_attack_score+foo8["er_fast_gradient_attack"]*er_fast_gradient_attack_score+foo8["loss_sensitivity"]*loss_sensitivity_score
+            
+            weights_pillars=weights_pillars["pillars"] 
+            try:
+                weight_accountability=weights_pillars["accountability"]
+            except:
+                weight_accountability=weights_pillars["methodology"]
 
-                    if str(pillar[1]['er_carlini_wagner_attack']) != 'nan':
-                        er_carlini_wagner_attack = int(
-                            pillar[1]['er_carlini_wagner_attack'])*0.2
+            trust_score_supervised=weight_accountability*accountability_score_supervised+weights_pillars["explainability"]*explainability_score_supervised+weights_pillars["fairness"]*fairness_score_supervised+weights_pillars["robustness"]*robustnesss_score_supervised
+            
+            dict_accountabiltiy_metric_scores={"Factsheecompletnessscore":factsheetcompletness_score,"Missingdatascore":missing_data_score, "Normalizationscore":normalization_score, "Regularizationscore":regularization_score,"Traintestsplitscore":train_test_split_score}
+            dict_explainabiltiy_metric_scores={"Algorithmclassscore":algorithm_class_score,"Correlatedfeaturesscore":correlated_features_score,"Modelsizescore":model_size_score,"Featurerevelancescore":feature_relevance_score}
+            dict_fairness_metric_scores={"Underfittingscore":underfitting_score, "Overfittingscore":overfitting_score,"Statisticalparitydifferencescore":statistical_parity_difference_score,"Equalopportunityscore":equal_opportunity_score,"Averageoddsdifferencescore":average_odds_difference_score,"Disparateimpactscore":disparate_impact_score,"Classbalancescore":class_balance_score}            
+            dict_robustness_metric_scores={"Cleverscore":clever_score,"Cliquemethodscore":clique_method_score,"Confidencescore":confidence_score,"Ercarliniwagnerscore":er_carlini_wagner_score,"Erdeepfoolattackscore":er_deep_fool_attack_score,"Erfastgradientattack":er_fast_gradient_attack_score,"Losssensitivityscore":loss_sensitivity_score}
+            
+            dict_metric_scores={"Metricscores":{"Accountabilityscore":dict_accountabiltiy_metric_scores,"Explainabilityscore":dict_explainabiltiy_metric_scores,"Fairnessscore":dict_fairness_metric_scores,"Robustnessscore":dict_robustness_metric_scores}}
+            
+            dict_pillars_scores={"Accountabilityscore":accountability_score_supervised,"Explainabilityscore":explainability_score_supervised,"Fairnessscore":fairness_score_supervised,"Robustnessscore":robustnesss_score_supervised}
 
-                    if str(pillar[1]['er_deepfool_attack']) != 'nan':
-                        er_deepfool_attack = int(
-                            pillar[1]['er_deepfool_attack'])*0.2
-
-                    robustness_score = confidence_score + clique_method + loss_sensitivity + \
-                        clever_score + er_fast_gradient_attack + \
-                        er_carlini_wagner_attack + er_deepfool_attack
-
-                    uploaddic['confidence_score'] = confidence_score
-                    uploaddic['clique_method'] = clique_method
-                    uploaddic['loss_sensitivity'] = loss_sensitivity
-                    uploaddic['clever_score'] = clever_score
-                    uploaddic['er_fast_gradient_attack'] = er_fast_gradient_attack
-                    uploaddic['er_carlini_wagner_attack'] = er_carlini_wagner_attack
-                    uploaddic['er_deepfool_attack'] = er_deepfool_attack
-                    uploaddic['robustness_score'] = robustness_score
-                    print("robustness Score is:", robustness_score)
-
-                if pillar[0] == 'methodology':
-                    # print("Pillar methodology is:", pillar[1])
-                    normalization = 0
-                    missing_data = 0
-                    regularization = 0
-                    train_test_split = 0
-                    factsheet_completeness = 0
-
-                    if str(pillar[1]['normalization']) != 'nan':
-                        normalization = int(pillar[1]['normalization'])*0.2
-
-                    if str(pillar[1]['missing_data']) != 'nan':
-                        missing_data = int(pillar[1]['missing_data'])*0.2
-
-                    if str(pillar[1]['regularization']) != 'nan':
-                        regularization = int(pillar[1]['regularization'])*0.2
-
-                    if str(pillar[1]['train_test_split']) != 'nan':
-                        train_test_split = int(
-                            pillar[1]['train_test_split'])*0.2
-
-                    if str(pillar[1]['factsheet_completeness']) != 'nan':
-                        factsheet_completeness = int(
-                            pillar[1]['factsheet_completeness'])*0.2
-
-                    methodology_score = normalization + missing_data + \
-                        regularization + train_test_split + factsheet_completeness
-
-                    uploaddic['normalization'] = normalization
-                    uploaddic['missing_data'] = missing_data
-                    uploaddic['regularization'] = regularization
-                    uploaddic['train_test_split'] = train_test_split
-                    uploaddic['factsheet_completeness'] = factsheet_completeness
-                    uploaddic['methodology_score'] = (
-                        "%.2f" % methodology_score)
-                    print("methodology Score is:", methodology_score)
-
-            trust_score = fairness_score*0.25 + explainability_score * \
-                0.25 + robustness_score*0.25 + methodology_score*0.25
-            uploaddic['trust_score'] = trust_score
-            print("Trust Score is:", trust_score)
-            #     config = config_weights[pillar]
-            #     weighted_scores = list(map(lambda x: scores[pillar][x] * config[x], scores[pillar].keys()))
-            #     sum_weights = np.nansum(np.array(list(config.values()))[~np.isnan(weighted_scores)])
-            # if sum_weights == 0:
-            #     result = 0
-            # else:
-            #     result = round(np.nansum(weighted_scores)/sum_weights,1)
-            #     final_scores[pillar] = result
-
-            # return scores, properties
-
-        path_testdata = os.path.join(BASE_DIR, 'apis/TestValues/test.csv')
-        path_traindata = os.path.join(BASE_DIR, 'apis/TestValues/train.csv')
-        path_module = os.path.join(BASE_DIR, 'apis/TestValues/model.pkl')
-        path_factsheet = os.path.join(
-            BASE_DIR, 'apis/TestValues/factsheet.json')
-        config_weights = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
-        mappings_config = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
-        factsheet = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+            dict_result_supervised={"Metricscores":dict_metric_scores,"Pillarscores":dict_pillars_scores,"Trustscore":trust_score_supervised}
+            print("DICT RESULT SUP: ",dict_result_supervised)
+            return dict_result_supervised
 
         if scenarioobj:
             for i in scenarioobj:
@@ -1406,236 +1431,89 @@ class dashboard(APIView):
                 path_module = i["model_file"]
                 path_traindata = i["training_file"]
                 path_factsheet = i["factsheet_file"]
+                path_outliersdata = i['outlier_data_file']
+                soulutionType = i['solution_type']
+                try:
+                    mappings_config = save_files_return_paths(i['metrics_mapping_file'])[0]
+                except:
+                    mappings_config = os.path.join(BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
 
-        print("Final Score result:", get_final_score(path_module, path_traindata,
-              path_testdata, config_weights, mappings_config, path_factsheet))
+            path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata = save_files_return_paths(path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata)
+            if(soulutionType == 'supervised'):
+                resultSuper = finalScore_supervised(path_module, path_traindata, path_testdata, path_factsheet, mappings_config)
 
-        result = collections.namedtuple('result', 'score properties')
-        FACTSHEET_NAME = "Newfact"
+                uploaddic['fairness_score'] = resultSuper['Pillarscores']['Fairnessscore']
+                try:
+                    uploaddic['methodology_score'] = resultSuper['Pillarscores']['Accountabilityscore']
+                except:
+                    uploaddic['accountability_score'] = resultSuper['Pillarscores']['Accountabilityscore']
 
-        def write_into_factsheet(new_factsheet, solution_set_path):
-            factsheet_path = os.path.join(solution_set_path, FACTSHEET_NAME)
-            with open(factsheet_path, 'w') as outfile:
-                json.dump(new_factsheet, outfile, indent=4)
-            return
+                uploaddic['trust_score'] = resultSuper['Trustscore']['Trustscore']
 
-        def trusting_AI_scores_unsupervised(model, train_data, test_data, outliers_data, factsheet, config_fairness, config_explainability,
-                                            config_robustness, methodology_config, solution_set_path):
-            output = dict(
-                fairness=analyse_fairness_unsupervised(
-                    model, train_data, test_data, outliers_data, factsheet, config_fairness),
-                explainability=analyse_explainability_unsupervised(
-                    model, train_data, test_data, outliers_data, config_explainability, factsheet),
-                robustness=analyse_robustness_unsupervised(
-                    model, train_data, test_data, outliers_data, config_robustness, factsheet),
-                methodology=analyse_accountability_unsupervised(
-                    model, train_data, test_data, outliers_data, factsheet, methodology_config)
-            )
-            scores = dict((k, v.score) for k, v in output.items())
-            properties = dict((k, v.properties) for k, v in output.items())
 
-            return result(score=scores, properties=properties)
+                uploaddic['explainability_score'] = resultSuper['Pillarscores']['Explainabilityscore']
+                uploaddic['robustness_score'] = resultSuper['Pillarscores']['Robustnessscore']
+                uploaddic['underfitting'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Underfittingscore']
+                uploaddic['overfitting'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Overfittingscore']
+                uploaddic['statistical_parity_difference'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Statisticalparitydifferencescore']
+                uploaddic['equal_opportunity_difference'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Equalopportunityscore']
+                uploaddic['average_odds_difference'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Averageoddsdifferencescore']
+                uploaddic['disparate_impact'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Disparateimpactscore']
+                uploaddic['class_balance'] = resultSuper['Metricscores']['Metricscores']['Fairnessscore']['Classbalancescore']
+                uploaddic['algorithm_class'] = resultSuper['Metricscores']['Metricscores']['Explainabilityscore']['Algorithmclassscore']
+                uploaddic['correlated_features'] = resultSuper['Metricscores']['Metricscores']['Explainabilityscore']['Correlatedfeaturesscore']
+                uploaddic['model_size'] = resultSuper['Metricscores']['Metricscores']['Explainabilityscore']['Modelsizescore']
+                uploaddic['feature_relevance'] = resultSuper['Metricscores']['Metricscores']['Explainabilityscore']['Featurerevelancescore']
+                uploaddic['confidence_score'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Confidencescore']
+                uploaddic['clique_method'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Cliquemethodscore']
+                uploaddic['loss_sensitivity'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Losssensitivityscore']
+                uploaddic['clever_score'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Cleverscore']
+                uploaddic['er_fast_gradient_attack'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Erfastgradientattack']
+                uploaddic['er_carlini_wagner_attack'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Ercarliniwagnerscore']
+                uploaddic['er_deepfool_attack'] = resultSuper['Metricscores']['Metricscores']['Robustnessscore']['Erdeepfoolattackscore']
+                uploaddic['normalization'] = resultSuper['Metricscores']['Metricscores']['Accountabilityscore']['Normalizationscore']
+                uploaddic['missing_data'] = resultSuper['Metricscores']['Metricscores']['Accountabilityscore']['Missingdatascore']
+                uploaddic['regularization'] = resultSuper['Metricscores']['Metricscores']['Accountabilityscore']['Regularizationscore']
+                uploaddic['train_test_split'] = resultSuper['Metricscores']['Metricscores']['Accountabilityscore']['Traintestsplitscore']
+                uploaddic['factsheet_completeness'] = resultSuper['Metricscores']['Metricscores']['Accountabilityscore']['Factsheecompletnessscore']
 
-        def get_final_score_unsupervised(model, train_data, test_data, outliers_data, config_weights, mappings_config, factsheet, solution_set_path, recalc=False):
-            mappingConfig1 = mappings_config
+            elif(soulutionType == 'unsupervised'):
+                print('is this called?')
+                resultUnsuper = unsupervised_FinalScore(path_module, path_traindata, path_testdata, path_outliersdata, path_factsheet, mappings_config)
 
-            with open(mappings_config, 'r') as f:
-                mappings_config = json.loads(f.read())
+                uploaddic['unsupervised_fairness_score'] = resultUnsuper['Pillarscores']['Fairnessscore']#here
+                try:
+                    uploaddic['unsupervised_methodology_score'] = resultUnsuper['Pillarscores']['Accountabilityscore']
+                except:
+                    uploaddic['accountability_score'] = resultUnsuper['Pillarscores']['Accountabilityscore']
+                
+                print('result:', resultUnsuper)
+                
+                uploaddic['unsupervised_trust_score'] = resultUnsuper['Trustscore']
 
-            config_fairness = mappings_config["fairness"]
-            config_explainability = mappings_config["explainability"]
-            config_robustness = mappings_config["robustness"]
-            config_methodology = mappings_config["methodology"]
+                uploaddic['unsupervised_explainability_score'] = resultUnsuper['Pillarscores']['Explainabilityscore']
+                uploaddic['unsupervised_robustness_score'] = resultUnsuper['Pillarscores']['Robustnessscore']
 
-            with open(mappingConfig1, 'r') as f:
-                default_map = json.loads(f.read())
+                uploaddic['unsupervised_underfitting'] = resultUnsuper['Metricscores']['Metricscores']['Fairnessscore']['Underfittingscore']
+                uploaddic['unsupervised_overfitting'] = resultUnsuper['Metricscores']['Metricscores']['Fairnessscore']['Overfittingscore']
+                uploaddic['unsupervised_statistical_parity_difference'] = resultUnsuper['Metricscores']['Metricscores']['Fairnessscore']['Statisticalparitydifferencescore']
+                uploaddic['unsupervised_disparate_impact'] = resultUnsuper['Metricscores']['Metricscores']['Fairnessscore']['Disparateimpactscore']
+                uploaddic['unsupervised_correlated_features'] = resultUnsuper['Metricscores']['Metricscores']['Explainabilityscore']['Correlatedfeaturesscore']
+                uploaddic['unsupervised_permutation_importance'] = resultUnsuper['Metricscores']['Metricscores']['Explainabilityscore']['Permutationfeatureimportancescore']
+                uploaddic['unsupervised_model_size'] = resultUnsuper['Metricscores']['Metricscores']['Explainabilityscore']['Modelsizescore']
+                uploaddic['unsupervised_clever_score'] = resultUnsuper['Metricscores']['Metricscores']['Robustnessscore']['Cleverscore']
+                uploaddic['unsupervised_normalization'] = resultUnsuper['Metricscores']['Metricscores']['Accountabilityscore']['Normalizationscore']
+                uploaddic['unsupervised_missing_data'] = resultUnsuper['Metricscores']['Metricscores']['Accountabilityscore']['Missingdatascore']
+                uploaddic['unsupervised_regularization'] = resultUnsuper['Metricscores']['Metricscores']['Accountabilityscore']['Regularizationscore']
+                uploaddic['unsupervised_train_test_split'] = resultUnsuper['Metricscores']['Metricscores']['Accountabilityscore']['Traintestsplitscore']
+                uploaddic['unsupervised_factsheet_completeness'] = resultUnsuper['Metricscores']['Metricscores']['Accountabilityscore']['Factsheecompletnessscore']
 
-            with open(factsheet, 'r') as g:
-                factsheet = json.loads(g.read())
+                
 
-            if default_map == mappings_config:
-                if "scores" in factsheet.keys() and "properties" in factsheet.keys() and not recalc:
-                    scores = factsheet["scores"]
-                    properties = factsheet["properties"]
-                else:
-                    print(
-                        "======================================================== no scores ======================================")
-                    result = trusting_AI_scores_unsupervised(model, train_data, test_data, outliers_data, factsheet, config_fairness, config_explainability,
-                                                             config_robustness, config_methodology, solution_set_path)
-                    scores = result.score
-                    factsheet["scores"] = scores
-                    properties = result.properties
-                    factsheet["properties"] = properties
-                    try:
-                        print(
-                            "======================================================== write into factsheet ======================================")
-
-                        write_into_factsheet(factsheet, solution_set_path)
-                    except Exception as e:
-                        print("ERROR in write_into_factsheet: {}".format(e))
-            else:
-                result = trusting_AI_scores_unsupervised(model, train_data, test_data, outliers_data, factsheet, config_fairness, config_explainability,
-                                                         config_robustness, config_methodology, solution_set_path)
-                scores = result.score
-                properties = result.properties
-
-            final_scores = dict()
-
-            print("Scores is:", scores)
-            with open(config_weights, 'r') as n:
-                config_weights = json.loads(n.read())
-            # config_weights=pd.read_json(config_weights)
-            # configdict = {}
-            print("Config weight:", config_weights)
-
-            fairness_score = 0
-            explainability_score = 0
-            robustness_score = 0
-            methodology_score = 0
-            for pillar in scores.items():
-                print("Pillars is:", pillar)
-                # pillar = {'pillar':pillar}
-
-                if pillar[0] == 'fairness':
-                    # print("Pillar fairness is:", pillar[1])
-                    fairness_score = int(
-                        pillar[1]['underfitting'])*0.35 + int(pillar[1]['overfitting'])*0.15
-                    + int(pillar[1]['statistical_parity_difference']) * \
-                        0.15 + int(pillar[1]['disparate_impact'])*0.1
-
-                    print("Fairness Score is:", fairness_score)
-
-                    uploaddic['unsupervised_underfitting'] = int(
-                        pillar[1]['underfitting'])
-                    uploaddic['unsupervised_overfitting'] = int(
-                        pillar[1]['overfitting'])
-                    uploaddic['unsupervised_statistical_parity_difference'] = int(
-                        pillar[1]['statistical_parity_difference'])
-                    uploaddic['unsupervised_disparate_impact'] = int(
-                        pillar[1]['disparate_impact'])
-                    uploaddic['unsupervised_fairness_score'] = fairness_score
-
-                if pillar[0] == 'explainability':
-                    # print("Pillar explainability is:", pillar[1]['algorithm_class'])
-                    algorithm_class = 0
-                    correlated_features = 0
-                    model_size = 0
-                    feature_relevance = 0
-
-                    if str(pillar[1]['correlated_features']) != 'nan':
-                        correlated_features = int(
-                            pillar[1]['correlated_features'])*0.15
-
-                    if str(pillar[1]['model_size']) != 'nan':
-                        model_size = int(pillar[1]['model_size'])*5
-
-                    if str(pillar[1]['permutation_feature_importance']) != 'nan':
-                        feature_relevance = int(
-                            pillar[1]['permutation_feature_importance'])*0.15
-
-                    print("algorithm_class Score is:", algorithm_class)
-                    print("correlated_features Score is:", correlated_features)
-                    print("model_size Score is:", model_size)
-                    print("feature_relevance Score is:", feature_relevance)
-
-                    explainability_score = correlated_features + model_size + feature_relevance
-
-                    print("explainability Score is:", explainability_score)
-
-                    uploaddic['unsupervised_correlated_features'] = correlated_features
-                    uploaddic['unsupervised_model_size'] = model_size
-                    uploaddic['unsupervised_feature_relevance'] = feature_relevance
-                    uploaddic['unsupervised_explainability_score'] = explainability_score
-
-                if pillar[0] == 'robustness':
-                    # print("Pillar robustness is:", pillar[1])
-
-                    confidence_score = 0
-                    clique_method = 0
-                    loss_sensitivity = 0
-                    clever_score = 0
-                    er_fast_gradient_attack = 0
-                    er_carlini_wagner_attack = 0
-                    er_deepfool_attack = 0
-
-                    if str(pillar[1]['clever_score']) != 'nan':
-                        clever_score = int(pillar[1]['clever_score'])*0.2
-
-                    robustness_score = clever_score
-
-                    print("robustness Score is:", robustness_score)
-
-                    uploaddic['unsupervised_clever_score'] = clever_score
-                    uploaddic['unsupervised_robustness_score'] = robustness_score
-
-                if pillar[0] == 'methodology':
-                    # print("Pillar methodology is:", pillar[1])
-                    normalization = 0
-                    missing_data = 0
-                    regularization = 0
-                    train_test_split = 0
-                    factsheet_completeness = 0
-
-                    if str(pillar[1]['normalization']) != 'nan':
-                        normalization = int(pillar[1]['normalization'])*0.2
-
-                    if str(pillar[1]['missing_data']) != 'nan':
-                        missing_data = int(pillar[1]['missing_data'])*0.2
-
-                    if str(pillar[1]['regularization']) != 'nan':
-                        regularization = int(pillar[1]['regularization'])*0.2
-
-                    if str(pillar[1]['train_test_split']) != 'nan':
-                        train_test_split = int(
-                            pillar[1]['train_test_split'])*0.2
-
-                    if str(pillar[1]['factsheet_completeness']) != 'nan':
-                        factsheet_completeness = int(
-                            pillar[1]['factsheet_completeness'])*0.2
-
-                    methodology_score = normalization + missing_data + \
-                        regularization + train_test_split + factsheet_completeness
-
-                    print("methodology Score is:", methodology_score)
-
-                    uploaddic['unsupervised_normalization'] = normalization
-                    uploaddic['unsupervised_missing_data'] = missing_data
-                    uploaddic['unsupervised_regularization'] = regularization
-                    uploaddic['unsupervised_train_test_split'] = train_test_split
-                    uploaddic['unsupervised_factsheet_completeness'] = factsheet_completeness
-
-                    uploaddic['unsupervised_methodology_score'] = methodology_score
-
-            trust_score = fairness_score*0.25 + explainability_score * \
-                0.25 + robustness_score*0.25 + methodology_score*0.25
-            # print("Trust Score is:", trust_score)
-            uploaddic['unsupervised_trust_score'] = trust_score
-            return trust_score
-
-        path_testdata = os.path.join(
-            BASE_DIR, 'apis/TestValues/cblof/test.csv')
-        path_traindata = os.path.join(
-            BASE_DIR, 'apis/TestValues/cblof/train.csv')
-        path_module = os.path.join(
-            BASE_DIR, 'apis/TestValues/cblof/model.joblib')
-        path_factsheet = os.path.join(
-            BASE_DIR, 'apis/TestValues/cblof/factsheet.json')
-        outliers_data = os.path.join(
-            BASE_DIR, 'apis/TestValues/cblof/outliers.csv')
-        config_weights = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
-        mappings_config = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
-        factsheet = os.path.join(
-            BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
-        solution_set_path = os.path.join(BASE_DIR, 'apis/TestValues/New_path/')
-        print("Final Score unsupervised:", get_final_score_unsupervised(path_module, path_traindata,
-              path_testdata, outliers_data, config_weights, mappings_config, path_factsheet, solution_set_path))
-
-        scenarios = Scenario.objects.filter(user_id=userexist.id).values()
-        uploaddic['scenarioList'] = scenarios
-        uploaddic['solutionList'] = scenarioobj
-        return Response(uploaddic)
+            FACTSHEET_NAME = "Newfact"
+            return Response(uploaddic)
+        else:
+            return Response('No Solution')
 
     def post(self, request):
         return Response("Successfully add!")
@@ -1659,18 +1537,29 @@ class solutiondetail(APIView):
     def put(self, request):
         solutionDetail = ScenarioSolution.objects.get(
             id=request.data['SolutionId'])
-
+        print('request:', request.data)
         solutionDetail.solution_name = request.data['NameSolution']
         solutionDetail.description = request.data['DescriptionSolution']
-        solutionDetail.training_file = request.data['TrainingFile']
-        solutionDetail.test_file = request.data['TestFile']
-        solutionDetail.factsheet_file = request.data['FactsheetFile']
-        solutionDetail.model_file = request.data['ModelFile']
-        solutionDetail.target_column = request.data['Targetcolumn']
-        solutionDetail.outlier_data_file = request.data['Outlierdatafile']
-        solutionDetail.protected_features = request.data['ProtectedFeature']
-        solutionDetail.protected_values = request.data['Protectedvalues']
-        solutionDetail.favourable_outcome = request.data['Favourableoutcome']
+        if (request.data['TrainingFile'] != 'undefined'):
+            print('asdfasdfasdf')
+        if (request.data['TrainingFile'] != 'undefined'):
+            solutionDetail.training_file = request.data['TrainingFile']
+        if (request.data['TestFile'] != 'undefined'):
+            solutionDetail.test_file = request.data['TestFile']
+        if (request.data['FactsheetFile'] != 'undefined'):
+            solutionDetail.factsheet_file = request.data['FactsheetFile']
+        if (request.data['ModelFile'] != 'undefined'):
+            solutionDetail.model_file = request.data['ModelFile']
+        if (len(request.data['Targetcolumn']) <= 0):
+            solutionDetail.target_column = request.data['Targetcolumn']
+        if (request.data['Outlierdatafile'] != 'undefined'):
+            solutionDetail.outlier_data_file = request.data['Outlierdatafile']
+        if (len(request.data['ProtectedFeature']) <= 0):
+            solutionDetail.protected_features = request.data['ProtectedFeature']
+        if (len(request.data['Protectedvalues']) <= 0):
+            solutionDetail.protected_values = request.data['Protectedvalues']
+        if (len(request.data['Favourableoutcome']) <= 0):
+            solutionDetail.favourable_outcome = request.data['Favourableoutcome']
         solutionDetail.save()
 
         return Response('successfully changed', 200)
@@ -1748,6 +1637,13 @@ class solution(APIView):
         if request.data is not None:
             # # trainingdata=request.data['TrainnigDatafile']
             # # serializer=SolutionSerializer(data=request.data)
+
+            mapFile = ''
+            if request.data['MapFile'] is None or request.data['MapFile'] == 'undefined':
+                mapFile = 'files/mapping_metrics_default.json'
+            else:
+                mapFile = request.data['MapFile']
+
             try:
                 print('email:', request.data)
                 userexist = CustomUser.objects.get(
@@ -1756,11 +1652,12 @@ class solution(APIView):
                     scenario_name=request.data['SelectScenario'])
                 print("Solution type:", scenario.id)
                 fileupload = ScenarioSolution.objects.create(
-                    user=userexist,
+                    user_id=userexist.id,
                     scenario_id=scenario.id,
                     solution_name=request.data['NameSolution'],
                     description=request.data['DescriptionSolution'],
                     training_file=request.data['TrainingFile'],
+                    metrics_mappings_file=mapFile,
                     test_file=request.data['TestFile'],
                     factsheet_file=request.data['FactsheetFile'],
                     model_file=request.data['ModelFile'],
@@ -2172,6 +2069,7 @@ class analyze(APIView):
                         path_traindata = i['training_file']
                         path_factsheet = i['factsheet_file']
 
+            path_module, path_testdata, path_traindata, path_factsheet = save_files_return_paths(path_module, path_testdata, path_traindata, path_factsheet)
             print("Performance_Metrics reslt:", get_performance_metrics(
                 path_module, path_testdata, 'Target', path_traindata, path_factsheet))
 
@@ -2181,7 +2079,7 @@ class analyze(APIView):
                 info = collections.namedtuple('info', 'description value')
                 result = collections.namedtuple('result', 'score properties')
 
-                factsheet = os.path.join(BASE_DIR, factsheet)
+                factsheet = save_files_return_paths(factsheet)[0]
                 with open(factsheet, 'r') as g:
                     factsheet = json.loads(g.read())
 
@@ -2223,8 +2121,6 @@ class analyze(APIView):
                         path_traindata = i['training_file']
                         path_factsheet = i['factsheet_file']
                         Target = i['target_column']
-                        print("Factsheet file:", i.FactsheetFile)
-                        print("ScenarioSolution data:", i.SolutionName)
 
             completeness_prop = get_factsheet_completeness_score(
                 path_factsheet)
@@ -2287,7 +2183,7 @@ class analyze(APIView):
                     default_map = json.loads(f.read())
                 # default_map=pd.read_json(mappingConfig1)
 
-                factsheet = os.path.join(BASE_DIR, factsheet)
+                factsheet = save_files_return_paths(factsheet)[0]
                 with open(factsheet, 'r') as g:
                     factsheet = json.loads(g.read())
                 # factsheet=pd.read_json(factsheet)
@@ -2525,27 +2421,6 @@ class analyze(APIView):
         # return result(score=score, properties=properties)
         return Response(uploaddic)
 
-        # def get_factsheet_completeness_score(model, training_dataset, test_dataset, factsheet, methodology_config):
-        #     import collections
-        #     info = collections.namedtuple('info', 'description value')
-        #     result = collections.namedtuple('result', 'score properties')
-
-        #     score = 0
-        #     properties= {"dep" :info('Depends on','Factsheet')}
-        #     GENERAL_INPUTS = ["model_name", "purpose_description", "domain_description", "training_data_description", "model_information", "authors", "contact_information"]
-
-        #     n = len(GENERAL_INPUTS)
-        #     ctr = 0
-        #     for e in GENERAL_INPUTS:
-        #         if "general" in factsheet and e in factsheet["general"]:
-        #             ctr+=1
-        #             properties[e] = info("Factsheet Property {}".format(e.replace("_"," ")), "present")
-        #         else:
-        #             properties[e] = info("Factsheet Property {}".format(e.replace("_"," ")), "missing")
-        #     score = round(ctr/n*5)
-        #     # return result(score=score, properties=properties)
-        #     return Response("Successfully add!")
-
 
 class compare(APIView):
     def get(self, request, id):
@@ -2588,6 +2463,7 @@ class compare(APIView):
             import pandas as pd
 
             def get_performance_metrics(model, test_data, target_column):
+                model, test_data = save_files_return_paths(model, test_data)
                 model = pd.read_pickle(model)
                 test_data = pd.read_csv(test_data)
 
@@ -2645,6 +2521,7 @@ class compare(APIView):
                 return performance_metrics
 
             def get_performance_metrics2(model, test_data, target_column):
+                model, test_data = save_files_return_paths(model, test_data)
                 model = pd.read_pickle(model)
                 test_data = pd.read_csv(test_data)
 
@@ -2716,8 +2593,8 @@ class compare(APIView):
                         path_testdata = i['test_file']
                         path_module = i['model_file']
                         # print("ScenarioSolution data:", i.SolutionName)
-            # print("Performance_Metrics reslt:", get_performance_metrics(
-            #     path_module, path_testdata, 'Target'))
+            print("Performance_Metrics reslt:", get_performance_metrics(
+                path_module, path_testdata, 'Target'))
 
             if scenarioobj:
                 for i in scenarioobj:
@@ -2725,8 +2602,8 @@ class compare(APIView):
                         path_testdata = i['test_file']
                         path_module = i['model_file']
                         # print("ScenarioSolution data:", i.SolutionName)
-            # print("Performance_Metrics reslt:", get_performance_metrics2(
-                # path_module, path_testdata, 'Target'))
+            print("Performance_Metrics reslt:", get_performance_metrics2(
+                path_module, path_testdata, 'Target'))
 
             def get_factsheet_completeness_score(factsheet):
                 propdic = {}
@@ -3089,989 +2966,6 @@ class compare(APIView):
             print("Final Score result:", get_final_score1(path_module, path_traindata,
                   path_testdata, config_weights, mappings_config, path_factsheet))
 
-            def get_final_score2(model, train_data, test_data, config_weights, mappings_config, factsheet, recalc=False):
-                mappingConfig1 = mappings_config
-
-                with open(mappings_config, 'r') as f:
-                    mappings_config = json.loads(f.read())
-                # mappings_config=pd.read_json(mappings_config)
-
-                config_fairness = mappings_config["fairness"]
-                config_explainability = mappings_config["explainability"]
-                config_robustness = mappings_config["robustness"]
-                config_methodology = mappings_config["methodology"]
-
-                methodology_config = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
-                config_explainability = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
-                config_fairness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
-                config_robustness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
-
-                def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
-                    # if "scores" in factsheet.keys() and "properties" in factsheet.keys():
-                    #     scores = factsheet["scores"]
-                    #     properties = factsheet["properties"]
-                    # else:
-                    output = dict(
-                        fairness=analyse_fairness(
-                            model, train_data, test_data, factsheet, config_fairness),
-                        explainability=analyse_explainability(
-                            model, train_data, test_data, config_explainability, factsheet),
-                        robustness=analyse_robustness(
-                            model, train_data, test_data, config_robustness, factsheet),
-                        methodology=analyse_methodology(
-                            model, train_data, test_data, factsheet, methodology_config)
-                    )
-                    scores = dict((k, v.score) for k, v in output.items())
-                    properties = dict((k, v.properties)
-                                      for k, v in output.items())
-                    # factsheet["scores"] = scores
-                    # factsheet["properties"] = properties
-                    # write_into_factsheet(factsheet, solution_set_path)
-
-                    return result(score=scores, properties=properties)
-
-                with open(mappingConfig1, 'r') as f:
-                    default_map = json.loads(f.read())
-                # default_map=pd.read_json(mappingConfig1)
-
-                # factsheet=os.path.join(BASE_DIR,'media/' + str(factsheet))
-                with open(factsheet, 'r') as g:
-                    factsheet = json.loads(g.read())
-                # factsheet=pd.read_json(factsheet)
-
-                # print("mapping is default:")
-                # print(default_map == mappings_config)
-                if default_map == mappings_config:
-                    if "scores" in factsheet.keys() and "properties" in factsheet.keys() and not recalc:
-                        scores = factsheet["scores"]
-                        properties = factsheet["properties"]
-                else:
-                    result = trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness,
-                                                config_explainability, config_robustness, config_methodology)
-                    scores = result.score
-                    factsheet["scores"] = scores
-                    properties = result.properties
-                    factsheet["properties"] = properties
-                # try:
-                #     write_into_factsheet(factsheet, solution_set_path)
-                # except Exception as e:
-                #     print("ERROR in write_into_factsheet: {}".format(e))
-                # else:
-                #     result = trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, config_methodology, solution_set_path)
-                #     scores = result.score
-                #     properties = result.properties
-
-                final_scores = dict()
-                # scores = tuple(scores)
-                print("Scores is:", scores)
-                with open(config_weights, 'r') as n:
-                    config_weights = json.loads(n.read())
-                # config_weights=pd.read_json(config_weights)
-                # configdict = {}
-                print("Config weight:", config_weights)
-
-                fairness_score = 0
-                explainability_score = 0
-                robustness_score = 0
-                methodology_score = 0
-                for pillar in scores.items():
-                    # print("Pillars:", pillar)
-                    # pillar = {'pillar':pillar}
-
-                    if pillar[0] == 'fairness':
-                        # print("Pillar fairness is:", pillar[1])
-                        uploaddic['underfitting2'] = int(
-                            pillar[1]['underfitting'])
-                        uploaddic['overfitting2'] = int(
-                            pillar[1]['overfitting'])
-                        uploaddic['statistical_parity_difference2'] = int(
-                            pillar[1]['statistical_parity_difference'])
-                        uploaddic['equal_opportunity_difference2'] = int(
-                            pillar[1]['equal_opportunity_difference'])
-                        uploaddic['average_odds_difference2'] = int(
-                            pillar[1]['average_odds_difference'])
-                        uploaddic['disparate_impact2'] = int(
-                            pillar[1]['disparate_impact'])
-                        uploaddic['class_balance2'] = int(
-                            pillar[1]['class_balance'])
-
-                        fairness_score = int(
-                            pillar[1]['underfitting'])*0.35 + int(pillar[1]['overfitting'])*0.15
-                        + int(pillar[1]['statistical_parity_difference'])*0.15 + \
-                            int(pillar[1]['equal_opportunity_difference'])*0.2
-                        + int(pillar[1]['average_odds_difference']) * \
-                            0.1 + int(pillar[1]['disparate_impact'])*0.1
-                        + int(pillar[1]['class_balance'])*0.1
-
-                        uploaddic['fairness_score2'] = fairness_score
-                        print("Fairness Score is:", fairness_score)
-
-                    if pillar[0] == 'explainability':
-                        # print("Pillar explainability is:", pillar[1]['algorithm_class'])
-                        algorithm_class = 0
-                        correlated_features = 0
-                        model_size = 0
-                        feature_relevance = 0
-
-                        if str(pillar[1]['algorithm_class']) != 'nan':
-                            algorithm_class = int(
-                                pillar[1]['algorithm_class'])*0.55
-
-                        if str(pillar[1]['correlated_features']) != 'nan':
-                            correlated_features = int(
-                                pillar[1]['correlated_features'])*0.15
-
-                        if str(pillar[1]['model_size']) != 'nan':
-                            model_size = int(pillar[1]['model_size'])*5
-
-                        if str(pillar[1]['feature_relevance']) != 'nan':
-                            feature_relevance = int(
-                                pillar[1]['feature_relevance'])*0.15
-
-                        explainability_score = algorithm_class + \
-                            correlated_features + model_size + feature_relevance
-
-                        uploaddic['algorithm_class2'] = algorithm_class
-                        uploaddic['correlated_features2'] = correlated_features
-                        uploaddic['model_size2'] = model_size
-                        uploaddic['feature_relevance2'] = feature_relevance
-
-                        uploaddic['explainability_score2'] = explainability_score
-                        print("explainability Score is:", explainability_score)
-
-                    if pillar[0] == 'robustness':
-                        # print("Pillar robustness is:", pillar[1])
-
-                        confidence_score = 0
-                        clique_method = 0
-                        loss_sensitivity = 0
-                        clever_score = 0
-                        er_fast_gradient_attack = 0
-                        er_carlini_wagner_attack = 0
-                        er_deepfool_attack = 0
-
-                        if str(pillar[1]['confidence_score']) != 'nan':
-                            confidence_score = int(
-                                pillar[1]['confidence_score'])*0.2
-
-                        if str(pillar[1]['clique_method']) != 'nan':
-                            clique_method = int(pillar[1]['clique_method'])*0.2
-
-                        if str(pillar[1]['loss_sensitivity']) != 'nan':
-                            loss_sensitivity = int(
-                                pillar[1]['loss_sensitivity'])*0.2
-
-                        if str(pillar[1]['clever_score']) != 'nan':
-                            clever_score = int(pillar[1]['clever_score'])*0.2
-
-                        if str(pillar[1]['er_fast_gradient_attack']) != 'nan':
-                            er_fast_gradient_attack = int(
-                                pillar[1]['er_fast_gradient_attack'])*0.2
-
-                        if str(pillar[1]['er_carlini_wagner_attack']) != 'nan':
-                            er_carlini_wagner_attack = int(
-                                pillar[1]['er_carlini_wagner_attack'])*0.2
-
-                        if str(pillar[1]['er_deepfool_attack']) != 'nan':
-                            er_deepfool_attack = int(
-                                pillar[1]['er_deepfool_attack'])*0.2
-
-                        robustness_score = confidence_score + clique_method + loss_sensitivity + \
-                            clever_score + er_fast_gradient_attack + \
-                            er_carlini_wagner_attack + er_deepfool_attack
-
-                        uploaddic['confidence_score2'] = confidence_score
-                        uploaddic['clique_method2'] = clique_method
-                        uploaddic['loss_sensitivity2'] = loss_sensitivity
-                        uploaddic['clever_score2'] = clever_score
-                        uploaddic['er_fast_gradient_attack2'] = er_fast_gradient_attack
-                        uploaddic['er_carlini_wagner_attack2'] = er_carlini_wagner_attack
-                        uploaddic['er_deepfool_attack2'] = er_deepfool_attack
-                        uploaddic['robustness_score2'] = robustness_score
-                        print("robustness Score is:", robustness_score)
-
-                    if pillar[0] == 'methodology':
-                        # print("Pillar methodology is:", pillar[1])
-                        normalization = 0
-                        missing_data = 0
-                        regularization = 0
-                        train_test_split = 0
-                        factsheet_completeness = 0
-
-                        if str(pillar[1]['normalization']) != 'nan':
-                            normalization = int(pillar[1]['normalization'])*0.2
-
-                        if str(pillar[1]['missing_data']) != 'nan':
-                            missing_data = int(pillar[1]['missing_data'])*0.2
-
-                        if str(pillar[1]['regularization']) != 'nan':
-                            regularization = int(
-                                pillar[1]['regularization'])*0.2
-
-                        if str(pillar[1]['train_test_split']) != 'nan':
-                            train_test_split = int(
-                                pillar[1]['train_test_split'])*0.2
-
-                        if str(pillar[1]['factsheet_completeness']) != 'nan':
-                            factsheet_completeness = int(
-                                pillar[1]['factsheet_completeness'])*0.2
-
-                        methodology_score = normalization + missing_data + \
-                            regularization + train_test_split + factsheet_completeness
-
-                        uploaddic['normalization2'] = normalization
-                        uploaddic['missing_data2'] = missing_data
-                        uploaddic['regularization2'] = regularization
-                        uploaddic['train_test_split2'] = train_test_split
-                        uploaddic['factsheet_completeness2'] = factsheet_completeness
-                        uploaddic['methodology_score2'] = (
-                            "%.2f" % methodology_score)
-                        print("methodology Score is:", methodology_score)
-
-                trust_score = fairness_score*0.25 + explainability_score * \
-                    0.25 + robustness_score*0.25 + methodology_score*0.25
-                uploaddic['trust_score2'] = trust_score
-                print("Trust Score is:", trust_score)
-
-            path_testdata = os.path.join(BASE_DIR, 'apis/TestValues/test.csv')
-            path_traindata = os.path.join(
-                BASE_DIR, 'apis/TestValues/train.csv')
-            path_module = os.path.join(BASE_DIR, 'apis/TestValues/model.pkl')
-            path_factsheet = os.path.join(
-                BASE_DIR, 'apis/TestValues/factsheet.json')
-            config_weights = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
-            mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
-            factsheet = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
-
-            if scenarioobj:
-                for i in scenarioobj:
-                    if i['scenario_id'] == scenario.id and i['solution_name'] == request.data['SelectSolution2']:
-                        path_testdata = i['test_file']
-                        path_module = i['model_file']
-                        path_traindata = i['training_file']
-                        path_factsheet = i['factsheet_file']
-
-            # solution_set_path,
-            # path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
-            # path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
-            print("Final Score result:", get_final_score2(path_module, path_traindata,
-                  path_testdata, config_weights, mappings_config, path_factsheet))
-
-        return Response(uploaddic)
-
-
-# class dataList1(APIView):
-#     def get(self,request,id):
-#         stockInfoDic={}
-#         indexDic={}
-
-#         ################# User data ####################
-#         # stockNames=['GME','AAPL','AMC']
-#         # indices=['^GSPC','^W5000']
-#         # quantitiesPurchased=[15, 2, 10]
-#         # # prchsdDts=['2020-02-19','2021-12-17','2022-01-12','2035-02-21']
-#         # prchsdDts= []
-#         ################################################
-
-#         stockNames=['AMZN','TSLA','PYPL','BABA']
-#         indices=['^GSPC','^W5000']
-#         quantitiesPurchased=[1,2,3,1]
-#         prchsdDts=[]
-#         uploadDict = {}
-#         # print("stocknames before",stockNames)
-#         user=CustomUser.objects.get(user_id=id)
-#         print('User Get=====>',user)
-#         stock_data=FirstStock.objects.filter(user=user).order_by('-id')[:1]
-#         print("User stock:",stock_data)
-#         serializer =FirstStockSerializer2(stock_data,many=True)
-#         # print("Serializer data:",serializer.data)
-#         # serializer = FirstStockSerializer(stock_data,many=True)
-
-#         corrlist = []
-#         dailyreturnsportf = []
-#         PreviousInv = []
-#         PercentageAR = []
-#         PercentAR_t = []
-#         SP500listt = []
-#         W5000listt = []
-
-#         TotalInvestment = []
-#         TotalReturn = []
-
-#         FullLoc1 = []
-#         FullLoc0 = []
-#         Full1Loc1 = []
-#         Full1Loc0 = []
-#         if stock_data is not None:
-#             for i in stock_data:
-#                 # print("response Data:",i.response_data['PreviousInv'])
-#                 stockNames = i.form_data['stockNames']
-#                 # prchsdDts = i.form_data['purchaseDate']
-#                 # print("prchsdDts:",i.form_data['purchaseDate'])
-#                 quantitiesPurchased = i.form_data['quantitiesPurchased']
-#                 for j in  i.form_data['purchaseDate']:
-#                     prchsdDts.append(dt.strptime(j, "%d/%m/%Y").strftime("%Y-%m-%d"))
-
-
-#                 corrlist = i.response_data['corrlist']
-#                 dailyreturnsportf = i.response_data['dailyreturnsportf']
-#                 PreviousInv = i.response_data['PrevInvestments']
-#                 PercentageAR = i.response_data['PercentageAR']
-
-#                 TotalInvestment = int(i.response_data['TotalInvestment'])
-#                 TotalReturn = int(i.response_data['TotalReturn'])
-
-#                 PercentAR_t = i.response_data['PercentARlistt']
-#                 SP500listt = i.response_data['SP500listt']
-#                 W5000listt = i.response_data['W5000listt']
-
-#                 FullLoc1 = i.response_data['FullLoc1']
-#                 FullLoc0 = i.response_data['FullLoc0']
-#                 Full1Loc1 = i.response_data['Full1Loc1']
-#                 Full1Loc0 = i.response_data['Full1Loc0']
-
-#         # #             # print("Dates:", dt.strptime(j, "%d/%m/%Y").strftime("%Y-%m-%d"))
-#         # #         # print("Stock Data:",i.form_data['stockNames'])
-#         # # # print("Serializer Data:",serializer.data)
-#         print("stocknames after",stockNames)
-#         uploadDict['stockNames'] = stockNames
-#         uploadDict['quantitiesPurchased'] = quantitiesPurchased
-#         uploadDict['prchsdDts'] = prchsdDts
-#         uploadDict['corrlist'] = corrlist
-#         uploadDict['dailyreturnsportf'] = dailyreturnsportf
-#         uploadDict['PreviousInv'] = PreviousInv
-#         uploadDict['PercentageAR'] = PercentageAR
-#         uploadDict['PercentAR_t'] = PercentAR_t
-#         uploadDict['SP500listt'] = SP500listt
-#         uploadDict['W5000listt'] = W5000listt
-#         uploadDict['FullLoc1'] = FullLoc1
-#         uploadDict['FullLoc0'] = FullLoc0
-#         uploadDict['Full1Loc1'] = Full1Loc1
-#         uploadDict['Full1Loc0'] = Full1Loc0
-#         uploadDict['TotalInvestment'] = TotalInvestment
-#         uploadDict['TotalReturn'] = TotalReturn
-
-
-#         print("Correlation:",corrlist)
-#         return Response(uploadDict)
-
-#     def post(self, request):
-#         # serializer = DataSerializer(data=request.data,many=False)
-#         print('successfull id is:',request.data['user'])
-#         stockInfoDic = {}
-#         indexDic={}
-#         print(request.data)
-#         uploaddic = {}
-#         # stockNames=request.data['form_data']['stockNames']
-#         # quantitiesPurchased=request.data['form_data']["quantitiesPurchased"]
-#         # prchsdDts= dt.strptime(request.data['form_data']["purchaseDate"], "%d/%m/%Y").strftime("%Y-%m-%d")
-#         stockNames=[]
-#         indices=['^GSPC','^W5000']
-#         quantitiesPurchased=[]
-#         prchsdDts=[]
-#         lst = []
-#         # print("stocknames before",stockNames)
-#         user=CustomUser.objects.get(user_id=request.data['user'])
-#         print('User=====>',user)
-#         stock_data=FirstStock.objects.filter(user=user).order_by('-id')[:1]
-#         serializer =FirstStockSerializer2(stock_data,many=True)
-#         # serializer = FirstStockSerializer(stock_data,many=True)
-#         if request.data is not None:
-#             for i, j, k in zip(request.data['form_data']['stockNames'], request.data['form_data']['purchaseDate'], request.data['form_data']['quantitiesPurchased']):
-#                 print("DATA:",i, j, k)
-#                 stockNames.append(i)
-#                 prchsdDts.append(dt.strptime(j, "%d/%m/%Y").strftime("%Y-%m-%d"))
-#                 quantitiesPurchased.append(k)
-#                 # stockNames = i.form_data
-#                 # # print("Stock Data:",i.form_data)
-#                 # stockNames = i.form_data['stockNames']
-#                 # # prchsdDts = i.form_data['purchaseDate']
-#                 # # print("prchsdDts:",i.form_data['purchaseDate'])
-#                 # quantitiesPurchased = i.form_data['quantitiesPurchased']
-#                 # for j in  i.form_data['purchaseDate']:
-#                 #     prchsdDts.append(dt.strptime(j, "%d/%m/%Y").strftime("%Y-%m-%d"))
-#         #             # print("Dates:", dt.strptime(j, "%d/%m/%Y").strftime("%Y-%m-%d"))
-#         #         # print("Stock Data:",i.form_data['stockNames'])
-#         # # print("Serializer Data:",serializer.data)
-#         print("stocknames after",stockNames)
-#         uploaddic['stockNames'] = stockNames
-
-#         print("Quantities:",quantitiesPurchased)
-#         uploaddic['Quantities'] = quantitiesPurchased
-
-#         print("Dates are:",prchsdDts)
-#         uploaddic['prchsdDts'] = prchsdDts
-
-#         if len(stockNames) != len(quantitiesPurchased) or len(stockNames) != len(prchsdDts):
-#             return "error, incompatible number of variables input!"
-
-#         for p in range(len(prchsdDts)):
-#             if dt.strptime(prchsdDts[p],"%Y-%m-%d").weekday() == 5 or dt.strptime(prchsdDts[p],"%Y-%m-%d").weekday() == 6:
-#                 prchsdDts[p]=(dt.strptime(prchsdDts[p],"%Y-%m-%d")-BDay(1)).strftime("%Y-%m-%d")
-#             else:
-#                 pass
-
-#         ########## last 2 graphs corr_matrix   daily_returns_portf  ################
-#         Min_date=min(prchsdDts)
-#         Max_date=dt.today()
-#                 # qnttsPrchsd = list(map(lambda x: int(x), quantitiesPurchased))
-#         qnttsPrchsd = [int(x) for x in quantitiesPurchased]
-
-#         stocksDF = yf.download(tickers = stockNames,start=Min_date,end=Max_date)['Close']
-#         portf=stocksDF.sum(axis=1)
-#         daily_returns_portf=portf.pct_change(1)*100
-#         daily_returns = stocksDF.pct_change(1)
-#         corr_matrix=daily_returns.corr()
-
-#         # print("corr_matrix",corr_matrix)
-#         corrlist = []
-#         for i in corr_matrix:
-#             print("corr_matrix",list(corr_matrix[i]))
-#             corrlist.append(list(corr_matrix[i]))
-#         print("corrlist:",corrlist)
-#         uploaddic['corrlist'] = corrlist
-#         # print("corr_matrix",list(corr_matrix['AAPL']))
-#         # print("corr_matrix",list(corr_matrix['AMC']))
-#         # print("corr_matrix",list(corr_matrix['GME']))
-
-#         uploaddic['dailyreturnsportf'] = list(daily_returns_portf)[1:]
-#         # print("daily_returns_portf",list(daily_returns_portf))
-
-#         # # Min_date=min(prchsdDts)
-#         # # Max_date=dt.today()
-#         # #             # qnttsPrchsd = list(map(lambda x: int(x), quantitiesPurchased))
-#         # # qnttsPrchsd = [int(x) for x in quantitiesPurchased]
-
-#         # # stocksDF = yf.download(tickers = stockNames,start=Min_date,end=Max_date)['Close']
-#         # # if stocksDF.empty:
-#         # #     return "Error! no market data available for today"
-
-#         # # daily_returns = stocksDF.pct_change(1)
-
-
-#         for SN, PD, QP in zip(stockNames, prchsdDts, quantitiesPurchased):
-
-#             Min_date=min(prchsdDts)
-#             Max_date=dt.today()
-#                     # qnttsPrchsd = list(map(lambda x: int(x), quantitiesPurchased))
-#             qnttsPrchsd = [int(x) for x in quantitiesPurchased]
-
-#             stocksDF = yf.download(tickers = stockNames,start=Min_date,end=Max_date)['Close']
-
-#             if stocksDF.empty:
-#                 return "Error! no market data available for today"
-
-#             daily_returns = stocksDF[SN].pct_change(1)
-#             standard_deviation=np.std(daily_returns)*100
-
-#             stock = yf.Ticker(SN)
-#             PD_=dt.strptime(PD,"%Y-%m-%d").strftime("%Y-%m-%d")
-#             # retrieving stock information for purchaseDate
-#             df_stock = stock.history(start=PD_,
-#                 end=dt.strptime(PD_,"%Y-%m-%d") + timedelta(days=1))
-#                     #print(df, PD, type(PD))
-
-#             stockValuePD = df_stock.loc[PD_,"Close"]
-#                         # print("stockvaluePD",stockValuePD, stockValuePD.corr())
-#                         # return Response("Hello")
-
-#             FSV0 = stockValuePD * QP
-
-#             try:
-#                 present_date = dt.today()-BDay(1)
-#                 #print('Present date: ', present_date)
-#                 stockValueToday = stocksDF[SN].loc[present_date.strftime("%Y-%m-%d")]
-#                 #print('stockvalueToday',stockValueToday)
-
-#             #except KeyError:
-#             #    return "errMessage Error! no market data available for today"
-#             except Exception as ex:
-#                 template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-#                 message = template.format(type(ex).__name__, ex.args)
-#                 return message
-#                 print("Usman")
-
-#                     # calculating FSV1
-#             FSV1 = stockValueToday * QP
-
-#                     # claculating stock return
-#             R = FSV1-FSV0
-
-#                     # calculation of percentage return
-#             percentAR = (R/FSV0)*100
-
-
-#             stockInfoDic[SN] = {"FSV0": FSV0, "FSV1": FSV1, "StockName": SN,"PurchaseDate":PD,
-#                     "PercentAR": percentAR, "R": R,"StandardDev":standard_deviation}
-
-#             TotalInvestment = 0
-#             for x in stockInfoDic.values():
-#                 TotalInvestment = TotalInvestment+x["FSV0"]
-#                 x['perc_Inv']=100*x['FSV0']/TotalInvestment
-
-
-#             ###########  4th Bar graph  ####################
-#             TotalInvestment = 0
-#             TotalReturn=0
-#             for x in stockInfoDic.values():
-#                 TotalInvestment = TotalInvestment+x["FSV0"]
-#                 TotalReturn = TotalReturn+x["R"]
-#                 # Calculation of percentage return compared to total investment
-#             for x in stockInfoDic.values():
-#                 PR = (x["FSV0"]/TotalInvestment)*100
-#                 x["prTotalI"] = PR
-
-#             for x in stockInfoDic.values():
-
-#                 indicesDic={}
-#                 for i in indices:
-#                     indexDF = yf.download(tickers = indices,start=Min_date,end=Max_date)['Close']
-#                     index = yf.Ticker(i)
-
-#                     df_index = index.history(start=x['PurchaseDate'],end=dt.strptime(x['PurchaseDate'],"%Y-%m-%d") + timedelta(days=1))
-#                     FSV0_index = df_index.loc[x['PurchaseDate'],"Close"]
-
-#                     FSV1_index = indexDF[i].loc[present_date.strftime("%Y-%m-%d")]
-
-#                     R_index = FSV1_index-FSV0_index
-
-#                     percentAR_index = (R_index/FSV0_index)*100
-
-#                     indicesDic[i]=percentAR_index
-
-#                 x['SP500']=indicesDic['^GSPC']
-#                 x['W5000']=indicesDic['^W5000']
-
-#         print("TotalInvestment is:",TotalInvestment)
-#         uploaddic['TotalInvestment'] = TotalInvestment
-#         print("TotalReturn is:",TotalReturn)
-#         uploaddic['TotalReturn'] = TotalReturn
-#         perc_Invs=[]
-
-#         for i in stockInfoDic.keys():
-#             perc_Invs.append(stockInfoDic[i]['perc_Inv'])
-
-#         perc_returns=[]
-
-#         for i in stockInfoDic.keys():
-#             perc_returns.append(stockInfoDic[i]['PercentAR'])
-
-
-#         print("PrevInvestments:",perc_Invs)
-#         uploaddic['PrevInvestments'] = perc_Invs
-
-#         print("PercentageAR:",perc_returns)
-#         uploaddic['PercentageAR'] = perc_returns
-
-#         # print("stock Names:", stockNames)
-#         # uploaddic['perc_returns'] = perc_returns
-
-#         x = np.arange(len(stockNames))  # the label locations
-#         width = 0.25  # the width of the bars
-#         #fig, ax = plt.subplots()
-
-#         PercentAR_list=[]
-#         SP500_list=[]
-#         W5000_list=[]
-
-#         for i in stockInfoDic.keys():
-#             PercentAR_list.append(stockInfoDic[i]['PercentAR'])
-#             SP500_list.append(stockInfoDic[i]['SP500'])
-#             W5000_list.append(stockInfoDic[i]['W5000'])
-
-#         PercentAR_list_t=np.array(PercentAR_list).T
-#         SP500_list_t=np.array(SP500_list).T
-#         W5000_list_t=np.array(W5000_list).T
-
-#         PercentAR_t = []
-#         SP500_t = []
-#         W5000_t = []
-
-#         for i in range(len(PercentAR_list_t)):
-#             PercentAR_t.append(PercentAR_list_t[i])
-#             SP500_t.append(SP500_list_t[i])
-#             W5000_t.append(W5000_list_t[i])
-
-#         print("PercentAR_list_t:",PercentAR_t)
-#         uploaddic['PercentARlistt'] = PercentAR_t
-
-#         print("SP500_list_t:",SP500_t)
-#         uploaddic['SP500listt'] = SP500_t
-
-#         print("W5000_list_t:",W5000_t)
-#         uploaddic['W5000listt'] = W5000_t
-
-#         # uploaddic['PercentAR_list_t'] = PercentAR_list_t
-
-#         # uploaddic['SP500_list_t'] = SP500_list_t
-
-#         # uploaddic['W5000_list_t'] = W5000_list_t
-#                 ##############  4th bar graph End ########################
-
-#         ############# 1st scatter Graph  ###################
-#         # perc_returns=[]
-#         returns_list=[]
-#         std_list=[]
-
-#         for i in stockInfoDic.keys():
-
-#             returns_list.append(stockInfoDic[i]['PercentAR'])
-#             std_list.append(stockInfoDic[i]['StandardDev'])
-
-#             full=pd.concat((pd.DataFrame(returns_list).T,pd.DataFrame(std_list).T),axis=0)
-
-#         full.columns=stockInfoDic.keys()
-
-#         print("Full Loc 1:",full.iloc[1])
-#         print("Full Loc 0:",full.iloc[0])
-
-#         print("Full Loc 1:",list(full.iloc[1]))
-#         uploaddic['FullLoc1'] = list(full.iloc[1])
-
-#         print("Full Loc 0:",list(full.iloc[0])) ### For Scatter
-#         uploaddic['FullLoc0'] = list(full.iloc[0])
-
-#         ######################### 1st scatter End ###################################
-
-#         ################  Second Scatter Graph  #############################################
-#         for SN, I, PD, QP in zip(stockNames,indices, prchsdDts, quantitiesPurchased):
-
-#             Min_date=min(prchsdDts)
-#             Max_date=dt.today()
-#                     # qnttsPrchsd = list(map(lambda x: int(x), quantitiesPurchased))
-#             qnttsPrchsd = [int(x) for x in quantitiesPurchased]
-
-#             stocksDF = yf.download(tickers = stockNames,start=Min_date,end=Max_date)['Close']
-#             indexDF=yf.download(tickers = indices,start=Min_date,end=Max_date)['Close']
-
-#             daily_returns_index = indexDF[I].pct_change(1)
-#             standard_deviation_index=np.std(daily_returns_index)*100
-
-#             portf=stocksDF.sum(axis=1)
-#             daily_returns_portf=portf.pct_change(1)
-#             standard_deviation_portf=np.std(daily_returns_portf)*100
-
-#             if stocksDF.empty:
-#                 return "Error! no market data available for today"
-
-#             stock = yf.Ticker(SN)
-#             index = yf.Ticker(I)
-#             PD_=dt.strptime(PD,"%Y-%m-%d").strftime("%Y-%m-%d")
-#             # retrieving stock information for purchaseDate
-#             df_stock = stock.history(start=PD_,
-#                 end=dt.strptime(PD_,"%Y-%m-%d") + timedelta(days=1))
-#                     #print(df, PD, type(PD))
-#             df_index = index.history(start=PD_,
-#                 end=dt.strptime(PD_,"%Y-%m-%d") + timedelta(days=1))
-
-#             stockValuePD = df_stock.loc[PD_,"Close"]
-#             indexValuePD = df_index.loc[PD_,"Close"]
-
-#             FSV0 = stockValuePD * QP
-#             FSV0_index = indexValuePD
-
-#             try:
-#                 present_date = dt.today()-BDay(1)
-#             #print('Present date: ', present_date)
-#                 stockValueToday = stocksDF[SN].loc[present_date.strftime("%Y-%m-%d")]
-#             #print('stockvalueToday',stockValueToday)
-#                 indexValueToday = indexDF[I].loc[present_date.strftime("%Y-%m-%d")]
-
-#             #except KeyError:
-#             #    return "errMessage Error! no market data available for today"
-#             except Exception as ex:
-#                 template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-#                 message = template.format(type(ex).__name__, ex.args)
-#                 return message
-#                 print("Usman")
-
-#                     # calculating FSV1
-#             FSV1 = stockValueToday * QP
-#             FSV1_index = indexValueToday
-
-#                     # claculating stock return
-#             R = FSV1-FSV0
-#             R_index = FSV1_index-FSV0_index
-
-#                     # calculation of percentage return
-#             percentAR = (R/FSV0)*100
-#             percentAR_index = (R_index/FSV0_index)*100
-
-
-#             stockInfoDic[SN] = {"FSV0": FSV0, "FSV1": FSV1, "StockName": SN,"PurchaseDate":PD,
-#                     "PercentAR": percentAR, "R": R}
-
-#             indexDic[I]={"PercentAR":percentAR_index,"StandardDev":standard_deviation_index}
-
-
-#             for x in stockInfoDic.values():
-
-#                 indicesDic={}
-#                 for i in indices:
-#                     indexDF = yf.download(tickers = indices,start=Min_date,end=Max_date)['Close']
-#                     index = yf.Ticker(i)
-
-#                     df_index = index.history(start=x['PurchaseDate'],end=dt.strptime(x['PurchaseDate'],"%Y-%m-%d") + timedelta(days=1))
-#                     FSV0_index = df_index.loc[x['PurchaseDate'],"Close"]
-
-#                     FSV1_index = indexDF[i].loc[present_date.strftime("%Y-%m-%d")]
-
-#                     R_index = FSV1_index-FSV0_index
-
-#                     percentAR_index = (R_index/FSV0_index)*100
-
-#                     indicesDic[i]=percentAR_index
-
-#                 x['SP500']=indicesDic['^GSPC']
-#                 x['W5000']=indicesDic['^W5000']
-
-# ##################################################################
-#         # returns_list=[]
-#         # std_list=[]
-
-#         # for i in stockInfoDic.keys():
-
-#         #     returns_list.append(stockInfoDic[i]['PercentAR'])
-#         #     std_list.append(stockInfoDic[i]['StandardDev'])
-
-#         #     full=pd.concat((pd.DataFrame(returns_list).T,pd.DataFrame(std_list).T),axis=0)
-
-#         # full.columns=stockInfoDic.keys()
-#         # print("Full Loc 1:",full.iloc[1])
-#         # print("Full Loc 0:",full.iloc[0]) ### For Scatter
-# ###################################################################################
-
-#         for x in stockInfoDic.values():
-#             PercentAR_portf=100*(x['FSV1'].sum()-x['FSV0'].sum())/x['FSV0'].sum()
-
-#         returns_list=[]
-#         std_list=[]
-
-#         indexDic["SP500"] = indexDic.pop("^GSPC")
-#         indexDic["W5000"] = indexDic.pop("^W5000")
-
-#         for i in indexDic.keys():
-
-#             returns_list.append(indexDic[i]['PercentAR'])
-#             std_list.append(indexDic[i]['StandardDev'])
-
-#             full=pd.concat((pd.DataFrame(returns_list).T,pd.DataFrame(std_list).T),axis=0,ignore_index=True)
-
-#         full.columns=indexDic.keys()
-#         portf=pd.DataFrame([PercentAR_portf,standard_deviation_portf]).rename(columns={0:'Portfolio'})
-#         full1=pd.concat((full,portf),axis=1)
-#         print("full1.iloc1",full1.iloc[1])
-#         print("full1.iloc0",full1.iloc[0])
-
-
-#         uploaddic['Full1Loc1'] = list(full1.iloc[1])
-#         uploaddic['Full1Loc0'] = list(full1.iloc[0])
-#         # # # # for i in stockInfoDic.keys():
-
-#         # # # #     perc_returns.append(stockInfoDic[i]['PercentAR'])
-#         # # # print("PercentageAR:",returns_list)
-#         # # # print("stock Names:", stockNames)
-
-#         ############################# 2nd Scatter Graph END #########################################
-#         # print("Full Loc 1:",full.iloc[1])
-#         # print("Full Loc 0:",full.iloc[0]) ### For Scatter
-#         # stockInfoDic = {}
-#         # stockInfoDic['stocknames'] = stockNames   ## For Hbar and Scatter
-#         # stockInfoDic['Percentage'] = returns_list  ## for Hbar and Scatter
-
-#         # ser = FirstStockSerializer(perc_Invs,many=True)
-
-#         user=CustomUser.objects.get(user_id=request.data['user'])
-#         request.data['user'] = user.id
-#         serializer=FirstStockSerializer(data=request.data)
-#         print("Serializer:",serializer)
-#         print("UploadDict:",uploaddic)
-#         if serializer.is_valid():
-#             serializer.save(response_data=uploaddic)
-#             # serializer.save(response_data={"PreviousInv": perc_Invs, "PercentageAR": perc_returns, "StockNames": stockNames, "PercentARlistT": PercentAR_t, "SP500listt": SP500_t, "W5000listt": W5000_t, "corrlist": corrlist, "dailyreturnportf": list(daily_returns_portf), "fullloc1": list(full.iloc[1]), "fullloc0": list(full.iloc[0]), "full1loc1": list(full1.iloc[1]), "full1loc0": list(full1.iloc[0])})
-#             print("Nice to Add Second!")
-#             # return Response(stockInfoDic)
-#             return Response(uploaddic)
-
-#         else:
-#             print('errors:  ',serializer.errors)
-
-#         # return Response(stockInfoDic)
-#         return Response(uploaddic)
-
-
-# class dataList2(APIView):
-#     def get(self,request,id):
-#         user=CustomUser.objects.get(user_id=id)
-#         stock_data=SecondStock.objects.filter(user=user).order_by('-id')[:1]
-#         serializer = SecondStockSerializer2(stock_data,many=True)
-
-#         return Response(serializer.data)
-
-#     def post(self, request):
-#         print('into datalist2 ===============================>')
-#         # serializer = DataSerializer(data=request.data,many=False)
-#         # print(request.data)
-#         # user=request.data["user"]
-#         # print("user",user)
-#         #form_data
-#         stockNames=request.data['form_data']['stockNames']
-#         quantitiesPurchased=[request.data['form_data']["quantitiesPurchased"]]
-#         interval=request.data['form_data']["interval"]
-
-#         if interval.capitalize() == "D":
-#             interval = "1d"
-#         elif interval.capitalize() == "M":
-#             interval = "1mo"
-#             return Response("M")
-#         elif interval.capitalize() == "W":
-#             interval = "1wk"
-#         else:
-#             errMessage = "Invalid interval type specified in the request"
-#             return Response("Invalid")
-#         myDf = yf.download(tickers=" ".join(stockNames),  start=datetime.date(datetime.now() - relativedelta(months=14)),
-#                        end=datetime.date(datetime.now(
-#                        )), group_by="ticker", interval=interval)
-
-#         if myDf.empty:
-#             return Response("Error! no market data available for today")
-
-
-#         srs = []
-
-#         for x in stockNames:
-#             s = myDf[x]["Close"].rename("Close "+x)
-#             # return Response("success")
-#             srs.append(s)
-
-#         ogDf = pd.concat(srs, axis=1)
-
-#        # return Response('here')
-#         if interval == "1wk":
-#             ogDf = ogDf[ogDf.index.dayofweek == 0]
-#         elif interval == "1mo":
-#             ogDf = ogDf[ogDf.index.day == 1]
-
-#         df = ogDf.rolling(2).apply(myFunc)
-
-
-#         means = df.mean()
-#         variances = df.var()
-#         stds = df.std()*100
-
-#         resultDic = {}
-#         for x in stockNames:
-#             mean = means["Close {}".format(
-#             x)]
-#             variance = variances["Close {}".format(x)]
-#             std = stds["Close {}".format(x)]
-#             posRan = mean+(mean*std)
-#             negRan = mean-(mean*std)
-
-#             result = {"Mean": mean, "variances": variance,
-#                   "stds": std, "posEnd": posRan, "negEnd": negRan}
-
-#             if math.isnan(result['Mean']):
-#                 result['Mean'] = ''
-#             if math.isnan(result['variances']):
-#                 result['variances'] = ''
-#             if math.isnan(result['stds']):
-#                 result['stds'] = ''
-#             if math.isnan(result['posEnd']):
-#                 result['posEnd'] = ''
-#             if math.isnan(result['negEnd']):
-#                 result['negEnd'] = ''
-#             resultDic[x] = result
-
-
-#         df.dropna(axis=1, how="all", inplace=True)
-#         ogDf.dropna(axis=1, how="all", inplace=True)
-#         dropNaDf = ogDf.dropna(axis=1, how="any")
-#         newDf = pd.DataFrame(index=dropNaDf.index.copy())
-#         newDf['totalSumLog'] = np.log(dropNaDf.loc[:, :].sum(axis=1))
-#         newDf = newDf.rolling(2).apply(myFunc2)
-#         newDf.dropna(inplace=True)
-#         rng = np.random.default_rng()
-#         rsame = rng.choice(newDf, size=100000, replace=True)
-#         VaR = float(np.quantile(rsame, 0.05))
-#         VarOut = VaR*100
-
-
-#     # RStar = np.percentile(retVec,100.*p)
-#         Es = float(np.mean(newDf[newDf <= VaR]))
-#         esHist = 100*Es
-
-#         resultDic['var'] = VaR
-#         resultDic['var_out'] = VarOut
-#         resultDic['es'] = Es
-#         resultDic['es_hist'] = esHist
-
-
-#         stocksV = []
-#         for SN, QP in zip(stockNames, quantitiesPurchased):
-#             try:
-#                 stocksV.append(dropNaDf.iloc[-1:]["Close "+SN][0]*QP)
-#             except KeyError:
-#                 pass
-#         VaR = np.quantile(rsame, 0.05)
-#         VarOut = VaR*100
-#         #RStar = np.percentile(retVec,100.*p)
-#         Es = np.mean(newDf[newDf <= VaR])
-#         esHist = 100*Es
-#         stocksV = []
-#         for SN, QP in zip(stockNames, quantitiesPurchased):
-#             try:
-#                 stocksV.append(dropNaDf.iloc[-1:]["Close "+SN][0]*QP)
-#             except KeyError:
-#                 pass
-
-#         portfolio_value = sum(stocksV)
-#         VaR_value = portfolio_value*(math.e**VaR-1)
-#         ES_value = portfolio_value*(math.e**esHist["totalSumLog"]-1)
-#         # RDSB[]
-#         user=CustomUser.objects.get(user_id=request.data['user'])
-#         request.data['user'] = user.id
-#         serializer=SecondStockSerializer(data=request.data)
-#         if serializer.is_valid():
-#             serializer.save(response_data=resultDic)
-#             print("Nice to Add Second!")
-
-#         else:
-#             print('errors:  ',serializer.errors)
-
-#         print(resultDic, 'resultDic')
-
-#         return Response(resultDic)
-
-
-# @api_view(['GET'])
-# def marketComparison(request):
-#     print("Market Comparison")
-#     myDf = yf.download(tickers="^W5000  ^GSPC",  start=datetime.date(datetime.now() - relativedelta(days=5)),
-#                        end=datetime.date(datetime.now(
-#                        )), group_by="ticker")
-#     print("myDf====>",myDf)
-#     myDf = myDf.to_dict('records')
-#     newData = []
-#     for data in myDf:
-#         print(data, 'data')
-#         newDict = {}
-#         for subData, values in data.items():
-#             print(subData, values, 'keys')
-#             val = ''
-#             for key in subData:
-#                 val = val + key + ' '
-#             newDict[val] = data[subData]
-#             print(subData, val)
-#         newData.append(newDict)
-#     return Response(newData)
 
 
 def myFunc(x):
@@ -4172,258 +3066,292 @@ def handle_score_request(type, detailType,  data, user_id):
             model_file, path_traindata, path_testdata, path_factsheet, path_mapping, outliers_data, target_column)
 
         status = 200
-        if (type == 'account'):
-            if (detailType == 'factsheet'):
+        result = ''
 
-                if (solutionType == 'supervised'):
-                    result = get_factsheet_completeness_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    result = get_factsheet_completeness_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+        try:
+            if (type == 'account'):
+                if (detailType == 'factsheet'):
 
-            elif (detailType == 'missingdata'):
-                if (solutionType == 'supervised'):
-                    result = get_missing_data_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    result = get_missing_data_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    if (solutionType == 'supervised'):
+                        result = get_factsheet_completeness_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_factsheet_completeness_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
 
-            elif (detailType == 'normalization'):
-                if (solutionType == 'supervised'):
-                    result = get_normalization_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    result = get_normalization_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                elif (detailType == 'missingdata'):
+                    if (solutionType == 'supervised'):
+                        result = get_missing_data_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_missing_data_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
 
-            elif (detailType == 'regularization'):
-                if (solutionType == 'supervised'):
-                    result = get_regularization_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    result = get_regularization_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                elif (detailType == 'normalization'):
+                    if (solutionType == 'supervised'):
+                        result = get_normalization_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_normalization_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
 
-            elif (detailType == 'train_test'):
-                if (solutionType == 'supervised'):
-                    result = get_train_test_split_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                elif (detailType == 'regularization'):
+                    if (solutionType == 'supervised'):
+                        result = get_regularization_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_regularization_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                elif (detailType == 'train_test'):
+                    if (solutionType == 'supervised'):
+                        result = get_train_test_split_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_train_test_split_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
                 else:
-                    result = get_train_test_split_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    result = 'none'
+                    status = 201
+
+            elif (type == 'robust'):
+
+                if (detailType == 'clever_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_clever_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        result = get_clever_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                elif (detailType == 'clique_method_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_clique_method_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'confidence_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_confidence_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'carliwagnerwttack_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_carliwagnerwttack_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'loss_sensitivity_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_loss_sensitivity_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'deepfoolattack_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_deepfoolattack_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+                
+                elif (detailType == 'fast_gradient_attack_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_fast_gradient_attack_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+            elif (type == 'explain'):
+                if (detailType == 'modelsize_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_modelsize_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                    else:
+                        result = get_modelsize_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                elif (detailType == 'correlated_features_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_correlated_features_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                    else:
+                        result = get_correlated_features_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                elif (detailType == 'algorithm_class_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_algorithm_class_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'feature_relevance_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_feature_relevance_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
+
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+                elif (detailType == 'permutation_feature_importance_score'):
+                    if (solutionType == 'supervised'):
+                        status = 404
+                        result = "The metric function isn't applicable for supervised ML/DL solutions"
+                    else:
+                        if (outliers_data.find('.') < 0):
+                            status = 404
+                            result = "The outlier data file is missing"
+                        else:
+                            result = get_permutation_feature_importance_score_unsupervised(
+                                model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, outliers_data)
+
+            elif (type == 'fairness'):
+                if (detailType == 'disparate_impact_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_disparate_impact_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        print('before get:')
+                        result = get_disparate_impact_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+                        print('get result:', result)
+
+                elif (detailType == 'class_balance_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_class_balance_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+                elif (detailType == 'overfitting_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_overfitting_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        result = get_overfitting_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'underfitting_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_underfitting_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        result = get_underfitting_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'statistical_parity_difference_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_statistical_parity_difference_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        result = get_statistical_parity_difference_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'equal_opportunity_difference_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_equal_opportunity_difference_score(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+                elif (detailType == 'average_odds_difference_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_average_odds_difference_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                    else:
+                        status = 404
+                        result = "The metric function isn't applicable for unsupervised ML/DL solutions"
+
+            elif (type == 'pillar'):
+                if (detailType == 'accountability_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_accountability_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+                    else:
+                        result = get_accountability_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'robustnesss_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_robustness_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+                    else:
+                        result = get_robustness_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'explainability_score'):
+                    print("outdata:", )
+                    if (solutionType == 'supervised'):
+                        print('super called')
+                        result = get_explainability_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+                    else:
+                        if (outliers_data.find('.') < 0):
+                            status = 404
+                            result = "The outlier data file is missing"
+                        else:
+                            result = get_explainability_score_unsupervised(
+                                model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'fairness_score'):
+                    if (solutionType == 'supervised'):
+                        result = get_fairness_score_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+                    else:
+                        result = get_fairness_score_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+            elif (type == 'trust'):
+                print('test:', type, detailType)
+                if (detailType == 'trustscore'):
+                    if (solutionType == 'supervised'):
+                        result = trusting_AI_scores_supervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data).score
+                    else:
+                        result = trusting_AI_scores_unsupervised(
+                            model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data).score
+                elif (detailType == 'trusting_AI_scores_supervised'):
+                    result = trusting_AI_scores_supervised(
+                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
+
+                elif (detailType == 'trusting_AI_scores_unsupervised'):
+                    result = trusting_AI_scores_unsupervised(
+                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
 
             else:
                 result = 'none'
                 status = 201
 
-        elif (type == 'robust'):
-
-            if (detailType == 'clever_score'):
-                if (solutionType == 'supervised'):
-                    result = get_clever_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    result = get_clever_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-            elif (detailType == 'clique_method_score'):
-                if (solutionType == 'supervised'):
-                    result = get_clique_method_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-                else:
-                    status = 201
-                    result = "clique method isn't applicable for unsupervised solutions"
-
-            elif (detailType == 'confidence_score'):
-                if (solutionType == 'supervised'):
-                    result = get_confidence_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    status = 201
-                    result = "confidence score isn't applicable for unsupervised solutions"
-
-            elif (detailType == 'carliwagnerwttack_score'):
-                if (solutionType == 'supervised'):
-                    result = get_carliwagnerwttack_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    status = 201
-                    result = "carliwagnerwttack score isn't applicable for unsupervised solutions"
-
-            elif (detailType == 'loss_sensitivity_score'):
-                if (solutionType == 'supervised'):
-                    result = get_loss_sensitivity_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    status = 201
-                    result = "carliwagnerwttack score isn't applicable for unsupervised solutions"
-
-        elif (type == 'explain'):
-            if (detailType == 'modelsize_score'):
-                if (solutionType == 'supervised'):
-                    result = get_modelsize_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-                else:
-                    result = get_modelsize_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-            elif (detailType == 'correlated_features_score'):
-                if (solutionType == 'supervised'):
-                    result = get_correlated_features_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-                else:
-                    result = get_correlated_features_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-            elif (detailType == 'algorithm_class_score'):
-                if (solutionType == 'supervised'):
-                    result = get_algorithm_class_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-                else:
-                    status = 201
-                    result = "algorithm_class_score isn't applicated"
-
-            elif (detailType == 'feature_relevance_score'):
-                if (solutionType == 'supervised'):
-                    result = get_feature_relevance_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path)
-
-                else:
-                    status = 201
-                    result = "feature_relevance_score isn't applicated"
-            elif (detailType == 'permutation_feature_importance_score'):
-                if (solutionType == 'supervised'):
-                    result = "permutation_feature_importance_score_supervied isn't applicated"
-                else:
-                    result = get_permutation_feature_importance_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, outliers_data)
-
-        elif (type == 'fairness'):
-            if (detailType == 'disparate_impact_score'):
-                if (solutionType == 'supervised'):
-                    result = get_disparate_impact_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    result = get_disparate_impact_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'class_balance_score'):
-                if (solutionType == 'supervised'):
-                    result = get_class_balance_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    status = 201
-                    result = "get_class_balance_score_unsupervised unimplemented"
-
-            elif (detailType == 'overfitting_score'):
-                if (solutionType == 'supervised'):
-                    result = get_overfitting_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    result = get_overfitting_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'underfitting_score'):
-                if (solutionType == 'supervised'):
-                    result = get_underfitting_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    result = get_underfitting_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'statistical_parity_difference_score'):
-                if (solutionType == 'supervised'):
-                    result = get_statistical_parity_difference_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    result = get_statistical_parity_difference_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'equal_opportunity_difference_score'):
-                if (solutionType == 'supervised'):
-                    result = get_equal_opportunity_difference_score(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    status = 201
-                    result = "equal_opportunity_difference_score_unsupervied isn't implemented"
-
-            elif (detailType == 'average_odds_difference_score'):
-                if (solutionType == 'supervised'):
-                    result = get_average_odds_difference_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-                else:
-                    status = 201
-                    result = "avaeraage_odds_difference_score not implemented"
-
-        elif (type == 'pillar'):
-            if (detailType == 'accountability_score'):
-                if (solutionType == 'supervised'):
-                    result = get_accountability_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-                else:
-                    result = get_accountability_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'robustnesss_score'):
-                if (solutionType == 'supervised'):
-                    result = get_robustness_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-                else:
-                    result = get_robustness_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'explainability_score'):
-                if (solutionType == 'supervised'):
-                    result = get_explainability_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-                else:
-                    result = get_explainability_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'fairness_score'):
-                if (solutionType == 'supervised'):
-                    result = get_fairness_score_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-                else:
-                    result = get_fairness_score_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-        elif (type == 'trust'):
-            if (detailType == 'trustscore'):
-                if (solutionType == 'supervised'):
-                    result = trusting_AI_scores_supervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data).score
-                else:
-                    result = trusting_AI_scores_unsupervised(
-                        model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data).score
-            elif (detailType == 'trusting_AI_scores_supervised'):
-                result = trusting_AI_scores_supervised(
-                    model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-            elif (detailType == 'trusting_AI_scores_unsupervised'):
-                result = trusting_AI_scores_unsupervised(
-                    model_path, training_dataset_path, test_dataset_path, factsheet_path, mappings_path, target_column, outliers_data)
-
-        else:
-            result = 'none'
-            status = 201
-
-        return Response(result, status)
+            return Response(result, status)
+        except Exception as e:
+            print('error:', e)
+            return Response("Error while reading corrupted model file", status=409)
 
     else:
-        return Response("error: No-Exist", status=409)
+        return Response("Please login / User doesn't exist", status=409)
 
 
 class CustomAutoSchema(SwaggerAutoSchema):
@@ -4710,6 +3638,7 @@ def get_accountability_score(request):
 @ api_view(['POST'])
 @ authentication_classes([CustomUserAuthentication])
 def get_robustness_score(request):
+    print('data:', request.data, request.user.id)
     return handle_score_request('pillar', 'robustnesss_score', request.data, request.user.id)
 
 
@@ -4755,3 +3684,191 @@ def get_trusting_AI_scores_supervised(request):
 @ authentication_classes([CustomUserAuthentication])
 def get_trusting_AI_scores_unsupervised(request):
     return handle_score_request('trust', 'trusting_AI_scores_unsupervised', request.data, request.user.id)
+
+
+class SolutionList(APIView):
+    """
+    List all solutions or create a new solution.
+    """
+
+    def get(self, request):
+        user = request.user
+        print("GET SOLUTIONLIST USER: ", user)
+        if not user.is_authenticated:
+            return Response({'error': 'Authentication failed'})
+
+        solutions = ScenarioSolution.objects.all()
+        serializer = SolutionSerializer(solutions, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = SolutionSerializer(data=request.data)
+        if serializer.is_valid():
+            print("REQUEST DATA: ",request.data)
+            print("USER ID: ",request.user.id)
+            user = request.user
+            scenario_name = request.data.get('scenario_name', '')
+            if not scenario_name:
+                # Generate new scenario name
+                base_name = f'Scenario_{slugify(user.username)}_'
+                count = Scenario.objects.filter(name__startswith=base_name).count()
+                scenario_name = f'{base_name}{count + 1}'
+
+            # Check if scenario exists
+            scenario = Scenario.objects.filter(scenario_name=scenario_name, user_id=user.id).first()
+            if not scenario:
+                # Create new scenario
+                scenario = Scenario.objects.create(scenario_name=scenario_name, user_id=user.id)
+
+            serializer.save(user=user, scenario=scenario)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        solution = get_object_or_404(ScenarioSolution, pk=pk)
+        serializer = SolutionSerializer(solution, data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            scenario_name = serializer.validated_data['scenario_name']
+            scenario = get_object_or_404(Scenario, scenario_name=scenario_name, user=user)
+            serializer.save(user=user, scenario=scenario)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        user = request.user
+        solution_name = request.data.get('solution_name')
+        if not solution_name:
+            return Response({'error': 'solution_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        solution = ScenarioSolution.objects.filter(user=user, solution_name=solution_name).first()
+        if not solution:
+            return Response({'error': 'Solution not found for the given user.'}, status=status.HTTP_404_NOT_FOUND)
+        solution.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+from django.http import Http404, HttpResponse
+class ScenarioList(APIView):
+    """
+    List all scenarios or create a new scenario.
+    """
+    def get_object(self, scenario_name):
+        try:
+            return Scenario.objects.get(user=self.request.user, scenario_name=scenario_name)
+        except Scenario.DoesNotExist:
+            raise Http404
+
+    def get(self, request):
+        scenarios = Scenario.objects.all()
+        serializer = ScenarioSerializer(scenarios, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = ScenarioSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            serializer.save(user=user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        user = request.user
+        scenario_name = request.data.get('scenario_name')
+        if not scenario_name:            
+            return Response({'error': 'scenario_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        scenario = Scenario.objects.filter(user=user, scenario_name=scenario_name).first()
+        if not scenario:
+            return Response({'error': 'Scenario not found for the given user.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ScenarioSerializer(scenario, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        user = request.user
+        scenario_name = request.data.get('scenario_name')
+        if not scenario_name:
+            return Response({'error': 'scenario_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        scenario = Scenario.objects.filter(user=user, scenario_name=scenario_name).first()
+        if not scenario:
+            return Response({'error': 'Scenario not found for the given user.'}, status=status.HTTP_404_NOT_FOUND)
+        scenario.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+from rest_framework import permissions
+from rest_framework.decorators import api_view, permission_classes
+
+
+class IsAdminOrReadOnly(permissions.BasePermission):
+
+    def has_permission(self, request, view):
+        # allow GET requests for all users
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        
+        # allow admins to perform unsafe operations
+        return request.user.is_staff
+    
+
+class IsOwnerOrAdminOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS or request.user.is_superuser:
+            return True
+        return obj.user == request.user
+
+class AllUserOrAdminOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        print("REQUEST METHOD: ",request.method)
+        print("USER REQUEST: ", request.data)
+        if request.method in permissions.SAFE_METHODS or request.user.is_superuser:
+            return True
+        return obj == request.user
+
+
+@api_view(['GET', 'POST'])
+@authentication_classes([CustomUserAuthentication])
+@permission_classes([AllUserOrAdminOrReadOnly, permissions.IsAuthenticated])
+def all_users(request):
+    if request.method == 'GET':
+        queryset = CustomUser.objects.all()
+        serializer = AllUserSerializer(queryset, many=True)
+        return Response(serializer.data)
+    elif request.method == 'POST':
+        data = request.data.copy()
+        user = request.user
+        data['user'] = user.id
+        serializer = ScenarioSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save(user=user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+from rest_framework.viewsets import ModelViewSet
+class SolutionViewSet(ModelViewSet):
+    serializer_class = ScenarioSolution
+    queryset = Scenario.objects.all()
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdminOrReadOnly]
+
+class CustomAutoSchema(SwaggerAutoSchema):
+    def get_request_serializer(self):
+        if self.method.lower() == 'post':
+            return None
+        return super().get_request_serializer()
+
+    def get_query_parameters(self, args, *kwargs):
+        params = super().get_query_parameters(*args, **kwargs)
+        if self.method.lower() == 'post':
+            params.append(openapi.Parameter('model_file', in_=openapi.IN_FORM, type=openapi.TYPE_FILE, required=True))
+            params.append(openapi.Parameter('training_dataset', in_=openapi.IN_FORM, type=openapi.TYPE_FILE, required=True))
+            params.append(openapi.Parameter('test_dataset', in_=openapi.IN_FORM, type=openapi.TYPE_FILE, required=True))
+            params.append(openapi.Parameter('factsheet', in_=openapi.IN_FORM, type=openapi.TYPE_FILE, required=True))
+            params.append(openapi.Parameter('mappings', in_=openapi.IN_FORM, type=openapi.TYPE_FILE, required=True))
+            params.append(openapi.Parameter('solution_type', in_=openapi.IN_FORM, type=openapi.TYPE_STRING, required=True))
+            params.append(openapi.Parameter('scenario_name', in_=openapi.IN_FORM, type=openapi.TYPE_STRING, required=True))
+            params.append(openapi.Parameter('solution_name', in_=openapi.IN_FORM, type=openapi.TYPE_STRING, required=True))
+
+
+        return params

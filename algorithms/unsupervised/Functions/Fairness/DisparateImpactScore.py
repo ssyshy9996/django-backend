@@ -23,7 +23,10 @@ def disparate_impact_score(model=not None, training_dataset=None, test_dataset=n
         test_dataset = test_dataset.T
 
     try:
+        print("TRY")
         protected_feature, protected_values = load_fairness_config(factsheet)
+        print("PROTECTED FEATURE: ",protected_feature)
+
         minority = test_dataset[test_dataset[protected_feature].isin(
             protected_values)]
         minority_size = len(minority)
@@ -56,8 +59,22 @@ def disparate_impact_score(model=not None, training_dataset=None, test_dataset=n
         num_outliers_majority = len(
             list(set(majority_indices) & set(outlier_indices)))
 
+        print('values:', minority_size, majority_size)
+        print("TEST_1")
+        print("NUM OUTLIERS MINORIY: ",num_outliers_minority)
+        print("MINORIY SIZE: ",minority_size)
+        print("NUM OUTLIERS MAJORITY: ",num_outliers_majority)
+        print("MAJORITY SIZE: ",majority_size)
+        
+        """if(minority_size==0):
+            print("reached minority size 0")
+            return result(score=5, properties="Minorize Size is 0")
+"""
         favored_minority_ratio = num_outliers_minority / minority_size
+        print("TEST_2")
+
         favored_majority_ratio = num_outliers_majority / majority_size
+        print("TEST_3")
 
         print("num_outliers_minority", num_outliers_minority)
         print("minority_size", minority_size)
@@ -150,27 +167,26 @@ def disparate_impact_score(model=not None, training_dataset=None, test_dataset=n
 
         properties["Score"] = str(score)
         print("ERROR in Disparate Impact Score(): {}".format(e))
+        print("RESULTTTTTT: ",result(score=int(score), properties=properties))
         return result(score=int(score), properties=properties)
 
         # return result(score=np.nan, properties={"Non computable because": str(e)})
 
 
-"""
-########################################TEST VALUES#############################################
+"""########################################TEST VALUES#############################################
 import pandas as pd
 
-train=r"Functions_Trust/Backend/algorithms/unsupervised/TestValues/train.csv"
-test=r"Functions_Trust/Backend/algorithms/unsupervised/TestValues/test.csv"
-outliers=r"Functions_Trust/Backend/algorithms/unsupervised/TestValues/outliers.csv"
+train=r"Backend/algorithms/unsupervised/TestValues/train.csv"
+test=r"Backend/algorithms/unsupervised/TestValues/test.csv"
+outliers=r"Backend/algorithms/unsupervised/TestValues/outliers.csv"
 
-model=r"Functions_Trust/Backend/algorithms/unsupervised/TestValues/model.joblib"
-factsheet=r"Functions_Trust/Backend/algorithms/unsupervised/TestValues/factsheet.json"
+model=r"Backend/algorithms/unsupervised/TestValues/model.joblib"
+factsheet=r"Backend/algorithms/unsupervised/TestValues/factsheet.json"
 
-mapping_metrics_default=r"Functions_Trust/Backend/algorithms/unsupervised/Mapping&Weights/mapping_metrics_default.json"
-weights_metrics_feault=r"Functions_Trust/Backend/algorithms/unsupervised/Mapping&Weights/weights_metrics_default.json"
-weights_pillars_default=r"Functions_Trust/Backend/algorithms/unsupervised/Mapping&Weights/weights_pillars_default.json"
+mapping_metrics_default=r"Backend/algorithms/unsupervised/Mapping&Weights/mapping_metrics_default.json"
 
 a= disparate_impact_score(model, test, factsheet, mapping_metrics_default, True,None)
 
 print(a)
 """
+

@@ -6,6 +6,8 @@ from scipy.stats import chisquare
 import operator
 import funcy
 
+
+from algorithms.supervised.Functions.Fairness.helpers_fairness_supervised import load_fairness_config
 # === Fairness Metrics ===
 def analyse(model, training_dataset, test_dataset, factsheet, config): 
     """Triggers the fairness analysis and in a first step all fairness metrics get computed.

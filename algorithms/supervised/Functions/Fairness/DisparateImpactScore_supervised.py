@@ -2,7 +2,7 @@ def get_disparate_impact_score_supervised(model=None, training_dataset= None, te
     try:
         import numpy, collections, pandas, tensorflow, algorithms.supervised.Functions.Fairness.helpers_fairness_supervised
     except:
-        import numpy, collections, pandas, tensorflow, Functions.Fairness.helpers_fairness_supervised
+        import numpy, collections, pandas, tensorflow, algorithms.supervised.Functions.Fairness.helpers_fairness_supervised
 
     test_data,model, factsheet,mappings= pandas.read_csv(test_dataset),pandas.read_pickle(model),pandas.read_json(factsheet), pandas.read_json(mappings)
     info,result = collections.namedtuple('info', 'description value'), collections.namedtuple('result', 'score properties')
@@ -16,7 +16,7 @@ def get_disparate_impact_score_supervised(model=None, training_dataset= None, te
             properties = {}
             data = test_dataset.copy(deep=True)
             
-            protected_feature, protected_values, target_column, favorable_outcomes = helpers_fairness_supervised.load_fairness_config(factsheet)
+            protected_feature, protected_values, target_column, favorable_outcomes = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.load_fairness_config(factsheet)
             
             X_data = data.drop(target_column, axis=1)
             if (isinstance(model, tensorflow.keras.Sequential)):

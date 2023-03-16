@@ -4,8 +4,12 @@ def get_normalization_score_supervised(model=None, training_dataset=not None, te
     metric_fname = inspect.currentframe().f_code.co_name
     from algorithms.supervised.Functions.Accountability.helpers_supervised_accountability import accountabiltiy_parameter_file_loader
     foo = accountabiltiy_parameter_file_loader(metric_function_name=metric_fname, training_dataset=training_dataset,test_dataset=test_dataset,mappings=mappings)
-    info, np, result, training_dataset,test_dataset,normalizationscore_mappings = foo['info'],foo['np'],foo['result'],foo['data']['training_dataset'],foo['data']['test_dataset'],foo['data']['mappings']["accountability"]["score_normalization"]["mappings"]["value"]
-   
+    info, np, result, training_dataset,test_dataset, = foo['info'],foo['np'],foo['result'],foo['data']['training_dataset'],foo['data']['test_dataset']
+    try:
+        normalizationscore_mappings=foo['data']['mappings']["accountability"]["score_normalization"]["mappings"]["value"]
+    except:
+        normalizationscore_mappings=foo['data']['mappings']["methodology"]["score_normalization"]["mappings"]["value"]
+    
     X_train=training_dataset.iloc[:, :-1]
     X_test,train_mean = test_dataset.iloc[:, :-1],np.mean(np.mean(X_train))
     train_std,test_mean,test_std, = np.mean(np.std(X_train)),np.mean(np.mean(X_test)),np.mean(np.std(X_test))

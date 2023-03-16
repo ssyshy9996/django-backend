@@ -27,10 +27,10 @@ sys.path.append(r"Backend/algorithms")
 sys.path.append(r"Backend/algorithms/unsupervised")
 sys.path.append(r"Backend/algorithms/unsupervised/Functions")
 try:
-    from ..unsupervised.Functions.Fairness.Fairness import analyse as analyse_fairness_supervised_unsupervised
-    from ..unsupervised.Functions.Explainability.Explainability import analyse as analyse_explainability_supervised_unsupervised
-    from ..unsupervised.Functions.Robustness.Robustness import analyse as analyse_robustness_supervised_unsupervised
-    from ..unsupervised.Functions.Accountability.Accountability import analyse as analyse_accountability_unsupervised
+    from algorithms.unsupervised.Functions.Fairness.Fairness import analyse as analyse_fairness_supervised_unsupervised
+    from algorithms.unsupervised.Functions.Explainability.Explainability import analyse as analyse_explainability_supervised_unsupervised
+    from algorithms.unsupervised.Functions.Robustness.Robustness import analyse as analyse_robustness_supervised_unsupervised
+    from algorithms.unsupervised.Functions.Accountability.Accountability import analyse as analyse_accountability_unsupervised
 except:
     from unsupervised.Functions.Fairness.Fairness import analyse as analyse_fairness_supervised_unsupervised
     from unsupervised.Functions.Explainability.Explainability import analyse as analyse_explainability_supervised_unsupervised
@@ -52,7 +52,7 @@ def trustinAI_scores_api(model=None, training_dataset=None, test_dataset=None, f
 
 
 def trusting_AI_scores_supervised(model=not None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=not None, target_column=None, outliers_data=None, thresholds=None, outlier_thresholds=None, penalty_outlier=None, outlier_percentage=None, high_cor=None, print_details=None):
-
+    print('reached here')
     output = dict(
         fairness=analyse_fairness_supervised(model, training_dataset, test_dataset, factsheet, mappings, target_column,
                                              outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
@@ -81,10 +81,41 @@ def calculate_pillar_scores(scores, weights, weights_pillars):
     return pillar_scores
 
 
-def trusting_AI_scores_unsupervised(model=not None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=not None, target_column=not None, outliers_data=not None, thresholds=not None, outlier_thresholds=not None, penalty_outlier=None, outlier_percentage=not None, high_cor=not None, print_details=True):
+def trusting_AI_scores_unsupervised(model=not None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=not None, target_column=None, outliers_data=None, thresholds=None, outlier_thresholds=None, penalty_outlier=None, outlier_percentage=None, high_cor=None, print_details=None):
+    print('reached here')
     output = dict(
-        fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
-                                                          target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
+        fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings, target_column,
+                                             outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
+        explainability=analyse_explainability_supervised_unsupervised(model=model, training_dataset=training_dataset, test_dataset=test_dataset, factsheet=factsheet, mappings=mappings, target_column=target_column,
+                                                                      outliers_data=outliers_data, thresholds=thresholds, outlier_thresholds=outlier_thresholds, outlier_percentage=outlier_percentage, high_cor=high_cor, print_details=print_details),
+        robustness=analyse_robustness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
+                                                              target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
+        accountability=analyse_accountability_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
+                                                           target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details)
+    )
+    scores = dict((k, v.score) for k, v in output.items())
+    properties = dict((k, v.properties) for k, v in output.items())
+
+    return result(score=scores, properties=properties)
+
+
+def calculate_pillar_scores(scores, weights, weights_pillars):
+    metric_scores = {}
+
+    for pillar in range(4):
+        weighted_scores = [scores[pillar][x] * config[x]
+                           for x in scores[pillar].keys()]
+        metric_scores[pillar] = sum(weighted_scores)
+    pillar_scores = {p: w * sum([metric_scores[m] for m in metric_scores if m in weights[p]])
+                     for p, w in weights_pillars.items()}
+    return pillar_scores
+
+
+
+def trusting_AI_scores_unsupervised2(model=not None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=not None, target_column=not None, outliers_data=not None, thresholds=not None, outlier_thresholds=not None, penalty_outlier=None, outlier_percentage=not None, high_cor=not None, print_details=True):
+    output = dict(
+        #fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
+                                                          #target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
         explainability=analyse_explainability_supervised_unsupervised(model=model, training_dataset=training_dataset, test_dataset=test_dataset, factsheet=factsheet, mappings=mappings, target_column=target_column,
                                                                       outliers_data=outliers_data, thresholds=thresholds, outlier_thresholds=outlier_thresholds, outlier_percentage=outlier_percentage, high_cor=high_cor, print_details=print_details),
         robustness=analyse_robustness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,

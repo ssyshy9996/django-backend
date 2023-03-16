@@ -3,17 +3,28 @@ def isKerasAutoencoder(model):
     return isinstance(model, keras.engine.functional.Functional)
 
 
-def read_model(solution_set_path):
-    import os
-    import pandas
-    import joblib
-    model_file = solution_set_path
-    file_extension = os.path.splitext(model_file)[1]
-    # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
-    pickle_file_extensions = [".pkl"]
-    print('file_extension', file_extension)
-    model = pandas.read_pickle(model_file)
-    return model_file
+    def read_model(solution_set_path):
+        print("READ MODEL REACHED")
+        import os
+        from joblib import load
+        MODEL_REGEX = "model.*"
+        model_file = solution_set_path
+        file_extension = os.path.splitext(model_file)[1]
+        print("FILE EXTENSION: ",file_extension)
+
+        # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
+        pickle_file_extensions = [".pkl"]
+        if file_extension in pickle_file_extensions:
+            model = pd.read_pickle(model_file)
+            return model
+
+        if (file_extension == ".joblib"):  # Check if a .joblib file needs to be loaded
+            print("model_file: ", model_file)
+            a=load(model_file)
+            print("READ MODEL joblib REACHED")
+            print("READ JOBLIB MODEl: ",a)
+            return a
+
 
 
 def get_threshold_mse_iqr(autoencoder, training_dataset):
@@ -73,6 +84,7 @@ def compute_accuracy(unique_elements, counts_elements, outlier_indicator=False, 
 
 
 def compute_outlier_ratio(model, data, outlier_thresh, print_details=False):
+    print('here called error in this function...', model, data)
     import numpy
     if isKerasAutoencoder(model):
         mad_outliers = detect_outliers(model, data, outlier_thresh)

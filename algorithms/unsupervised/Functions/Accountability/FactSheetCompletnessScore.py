@@ -40,6 +40,8 @@ def get_factsheet_completeness_score_unsupervised(model=None, training_dataset=N
             properties[e] = info("Factsheet Property {}".format(
                 e.replace("_", " ")), "missing")
     score = round(ctr/n*5)
+    if score==0:
+        score=1
     return result(score=score, properties=properties)
 
 

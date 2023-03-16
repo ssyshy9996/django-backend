@@ -11,6 +11,7 @@ def permutation_feature_importance_score(model=not None, training_dataset=not No
     result = collections.namedtuple('result', 'score properties')
     info = collections.namedtuple('info', 'description value')
 
+    print('outliers_data:', outliers_data)
     outliers_data = pd.read_csv(outliers_data)
     features = list(outliers_data.columns)
 
@@ -22,21 +23,25 @@ def permutation_feature_importance_score(model=not None, training_dataset=not No
         train_data = train_data.T
 
     def read_model(solution_set_path):
+        print("READ MODEL REACHED")
         import os
         from joblib import load
         MODEL_REGEX = "model.*"
         model_file = solution_set_path
         file_extension = os.path.splitext(model_file)[1]
+        print("FILE EXTENSION: ",file_extension)
+
         # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
         pickle_file_extensions = [".pkl"]
         if file_extension in pickle_file_extensions:
             model = pd.read_pickle(model_file)
             return model
-
-        if file_extension == ".joblib":  # Check if a .joblib file needs to be loaded
+        if (file_extension == ".joblib"):  # Check if a .joblib file needs to be loaded
             print("model_file: ", model_file)
-            # load(model_file)
-            return load(model_file)
+            a=load(model_file)
+            print("READ MODEL joblib REACHED")
+            print("READ JOBLIB MODEl: ",a)
+            return a
 
     def detect_outliers(autoencoder, df, threshold_mse):
         if (len(threshold_mse) == 2):
@@ -149,8 +154,8 @@ def permutation_feature_importance_score(model=not None, training_dataset=not No
     return result(score=int(score), properties=properties)
 
 
-"""########################################TEST VALUES#############################################
-train=r"Backend/algorithms/unsupervised/TestValues/train.csv"
+########################################TEST VALUES#############################################
+"""train=r"Backend/algorithms/unsupervised/TestValues/train.csv"
 test=r"Backend/algorithms/unsupervised/TestValues/test.csv"
 outliers=r"Backend/algorithms/unsupervised/TestValues/outliers.csv"
 model=r"Backend/algorithms/unsupervised/TestValues/model.joblib"

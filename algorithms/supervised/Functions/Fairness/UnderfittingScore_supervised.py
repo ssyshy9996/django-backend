@@ -10,6 +10,8 @@ def get_underfitting_score_supervised(model=not None, training_dataset=None, tes
         import Functions.Fairness.helpers_fairness_supervised
         import numpy as np
 
+    print("GET UNDERFITTING SCORE MODEL: ",model)
+    
     test_dataset, factsheet, model = pandas.read_csv(
         test_dataset), pandas.read_json(factsheet), pandas.read_pickle(model)
 
