@@ -87,7 +87,8 @@ class ScenarioSolution(models.Model):
         max_length=20, choices=SOLUTION_TYPE_CHOISES, null=False)
     training_file = models.FileField(upload_to='files', blank=True, null=True)
     test_file = models.FileField(upload_to='files', blank=True, null=True)
-    protected_features = models.CharField(max_length=200, blank=True, null=True)
+    protected_features = models.CharField(
+        max_length=200, blank=True, null=True)
     protected_values = models.CharField(max_length=200, blank=True, null=True)
     target_column = models.CharField(
         max_length=200, null=True, default='target')
@@ -98,6 +99,10 @@ class ScenarioSolution(models.Model):
     factsheet_file = models.FileField(upload_to='files', blank=True, null=True)
     model_file = models.FileField(upload_to='files', blank=True, null=True)
     metrics_mappings_file = models.FileField(
+        upload_to='files', blank=True, null=True)
+    weights_metrics = models.FileField(
+        upload_to='files', blank=True, null=True)
+    weights_pillars = models.FileField(
         upload_to='files', blank=True, null=True)
 
     def __str__(self):
