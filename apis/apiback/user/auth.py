@@ -16,12 +16,13 @@ class auth(APIView):
             return Response({
                 'email': email,
                 'password': password,
+                'is_admin': user.is_admin,
             }, status=200)
         else:
             return Response('Login Failed', status=400)
 
     def post(self, request):  # when register
-        print('register:', request)
+        print('register:', request.data)
         email = request.data['email']
         password = request.data['password']
 
@@ -29,7 +30,8 @@ class auth(APIView):
             return Response('register Error', status=400)
 
         password = make_password(password)
-        newUser = CustomUser.objects.create(email=email, password=password)
+        newUser = CustomUser.objects.create(
+            email=email, password=password, username=email)
         newUser.save()
 
         return Response('register', status=200)

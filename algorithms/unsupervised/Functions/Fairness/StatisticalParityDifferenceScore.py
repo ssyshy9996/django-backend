@@ -14,7 +14,7 @@ def get_statistical_parity_difference_score_unsupervised(model=not None, trainin
         MODEL_REGEX = "model.*"
         model_file = solution_set_path
         file_extension = os.path.splitext(model_file)[1]
-        print("FILE EXTENSION: ",file_extension)
+        print("FILE EXTENSION: ", file_extension)
 
         # pickle_file_extensions = [".sav", ".pkl", ".pickle"]
         pickle_file_extensions = [".pkl"]
@@ -24,21 +24,22 @@ def get_statistical_parity_difference_score_unsupervised(model=not None, trainin
 
         if (file_extension == ".joblib"):  # Check if a .joblib file needs to be loaded
             print("model_file: ", model_file)
-            a=load(model_file)
+            a = load(model_file)
             print("READ MODEL joblib REACHED")
-            print("READ JOBLIB MODEl: ",a)
+            print("READ JOBLIB MODEl: ", a)
             return a
 
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')
 
+    print('out:', outliers_data)
     factsheet = pd.read_json(factsheet)
     training_dataset = pd.read_csv(training_dataset)
     outliers_data = pd.read_csv(outliers_data)
     model = read_model(model)
     mappings = pd.read_json(mappings)
 
-    if not thresholds or type(thresholds)==bool:
+    if not thresholds or type(thresholds) == bool:
         thresholds = mappings["fairness"]["score_overfitting"]["thresholds"]["value"]
 
     try:

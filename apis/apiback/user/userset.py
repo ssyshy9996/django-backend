@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from ...models import CustomUser
 from rest_framework.response import Response
+from django.contrib.auth.hashers import make_password
 
 
 class userset(APIView):
@@ -14,7 +15,7 @@ class userset(APIView):
 
     def post(self, request):
         user = CustomUser.objects.get(email=request.data['email'])
-        user.password = request.data['password']
+        user.password = make_password(request.data['password'])
         user.save()
 
         return Response('success', status=200)

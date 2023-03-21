@@ -3,8 +3,12 @@ import os
 from rest_framework.views import APIView
 from ...models import CustomUser, Scenario, ScenarioSolution
 from ...views import BASE_DIR
-from ...apiback.public import save_files_return_paths, analyse_fairness, analyse_explainability, analyse_methodology, analyse_robustness
 from rest_framework.response import Response
+from ..public import save_files_return_paths
+from algorithms.supervised.Functions.Fairness.FarinessScore_supervised import get_fairness_score_supervised as analyse_fairness
+from algorithms.supervised.Functions.Explainability.ExplainabilityScore_supervised import get_explainability_score_supervised as analyse_explainability
+from algorithms.supervised.Functions.Accountability.AccountabilityScore_supervised import get_accountability_score_supervised as analyse_methodology
+from algorithms.supervised.Functions.Robustness.Robustness_supervised import get_robustness_score_supervised as analyse_robustness
 
 
 class analyze(APIView):
@@ -32,11 +36,6 @@ class analyze(APIView):
             if scenario:
                 for i in scenario:
                     if (i['scenario_name'] == request.data['SelectScenario']):
-                        print("Response data ScenarioName:",
-                              i['scenario_name']),
-                        print("Response data Description:",
-                              i['description']),
-
                         ScenarioName.append(i['scenario_name']),
                         Description.append(i['description']),
 
@@ -51,9 +50,14 @@ class analyze(APIView):
             DEFAULT_TARGET_COLUMN_INDEX = -1
             import pandas as pd
 
-            def get_performance_metrics(model, test_data, target_column, train_data, factsheet):
+            def get_performance_metrics(model, test_data, target_column, train_data, factsheet, solution_type):
                 model, test_data = save_files_return_paths(model, test_data)
-                model = pd.read_pickle(model)
+                if (solution_type == 'supervised'):
+                    model = pd.read_pickle(model)
+                else:
+                    from joblib import load
+                    model = load(model)
+
                 test_data = pd.read_csv(test_data)
 
                 train_data = pd.read_csv(train_data)
@@ -62,13 +66,15 @@ class analyze(APIView):
                 with open(factsheet, 'r') as g:
                     factsheet = json.loads(g.read())
 
-                y_test = test_data[target_column]
-                y_true = y_test.values.flatten()
+                # y_test = test_data[target_column]
+                # y_true = y_test.values.flatten()
 
                 if target_column:
+                    print('target called')
                     X_test = test_data.drop(target_column, axis=1)
                     y_test = test_data[target_column]
                 else:
+                    print('target uncalled')
                     X_test = test_data.iloc[:, :DEFAULT_TARGET_COLUMN_INDEX]
                     y_test = test_data.reset_index(
                         drop=True).iloc[:, DEFAULT_TARGET_COLUMN_INDEX:]
@@ -81,7 +87,7 @@ class analyze(APIView):
                     labels = np.unique(np.array([y_pred, y_true]).flatten())
 
                 performance_metrics = pd.DataFrame({
-                    "accuracy": [metrics.accuracy_score(y_true, y_pred)],
+                    "accuracy": [metrics.accuracy_score(y_true, y_pred.round(), normalize=False)],
                     "global recall": [metrics.recall_score(y_true, y_pred, labels=labels, average="micro")],
                     "class weighted recall": [metrics.recall_score(y_true, y_pred, average="weighted")],
                     "global precision": [metrics.precision_score(y_true, y_pred, labels=labels, average="micro")],
@@ -144,7 +150,7 @@ class analyze(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'apis/TestValues/factsheet.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             print('sca:', scenario)
             if scenarioobj:
@@ -156,11 +162,13 @@ class analyze(APIView):
                         path_factsheet = i['factsheet_file']
                         weights_metrics = i['weights_metrics']
                         weights_pillars = i['weights_pillars']
+                        target_column = i['target_column']
+                        solution_type = i['solution_type']
 
             path_module, path_testdata, path_traindata, path_factsheet, weights_metrics, weights_pillars = save_files_return_paths(
                 path_module, path_testdata, path_traindata, path_factsheet, weights_metrics, weights_pillars)
             print("Performance_Metrics reslt:", get_performance_metrics(
-                path_module, path_testdata, 'Target', path_traindata, path_factsheet))
+                path_module, path_testdata, target_column, path_traindata, path_factsheet, solution_type))
 
             def get_factsheet_completeness_score(factsheet):
                 propdic = {}
@@ -198,7 +206,7 @@ class analyze(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'apis/TestValues/factsheet.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj:
                 for i in scenarioobj:
@@ -231,13 +239,13 @@ class analyze(APIView):
                 config_methodology = mappings_config["methodology"]
 
                 methodology_config = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/Accountability/default.json')
                 config_explainability = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/explainability/default.json')
                 config_fairness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/fairness/default.json')
                 config_robustness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/robustness/default.json')
 
                 def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
                     output = dict(
@@ -442,11 +450,11 @@ class analyze(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'apis/TestValues/factsheet.json')
             config_weights = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
+                BASE_DIR, 'apis/TestValues/Weights/default.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
             factsheet = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj:
                 for i in scenarioobj:

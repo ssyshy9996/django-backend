@@ -41,6 +41,7 @@ class CustomUser(AbstractBaseUser):
     id = models.AutoField(primary_key=True)
     username = models.CharField(max_length=50, unique=True)
     email = models.EmailField(max_length=255, unique=True)
+    password = models.CharField(max_length=500)
     is_admin = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'username'
@@ -58,13 +59,23 @@ class CustomUser(AbstractBaseUser):
     def has_module_perms(self, app_label):
         return True
 
+    def get_user_name(self):
+        return self.username
+
+    def get_user_password(self):
+        return self.password
+
+    def get_user_id(self):
+        return f"{self.id}"
+
     @property
     def is_staff(self):
         return self.is_admin
 
 
 class Scenario(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(CustomUser,
                              on_delete=models.CASCADE)
     scenario_name = models.CharField(max_length=100, unique=True, null=False)
     description = models.CharField(max_length=200)
@@ -72,13 +83,26 @@ class Scenario(models.Model):
     def __str__(self):
         return f"{self.pk}.{self.user}"
 
+    def get_scenario_name(self):
+        return self.scenario_name
+
+    def get_description(self):
+        return self.description
+
+    def get_user_id(self):
+        return self.user_id
+
+    def get_scenario_id(self):
+        return f"{id}"
+
 
 class ScenarioSolution(models.Model):
+    id = models.AutoField(primary_key=True)
     SOLUTION_TYPE_CHOISES = (
         ('supervised', 'Supervised'),
         ('unsupervised', 'Unsupervised')
     )
-    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+    user = models.ForeignKey(CustomUser,
                              on_delete=models.CASCADE)
     scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE)
     solution_name = models.CharField(max_length=200, unique=True, null=False)
@@ -107,3 +131,54 @@ class ScenarioSolution(models.Model):
 
     def __str__(self):
         return f"{self.pk}.{self.solution_name}"
+
+    def get_user_id(self):
+        return f"{self.user_id}"
+
+    def get_scenario_id(self):
+        return self.scenario_id
+
+    def get_solution_name(self):
+        return self.solution_name
+
+    def get_description(self):
+        return self.description
+
+    def get_solution_type(self):
+        return self.solution_type
+
+    def get_traing_file(self):
+        return self.training_file
+
+    def get_test_file(self):
+        return self.test_file
+
+    def get_protected_value(self):
+        return self.protected_values
+
+    def get_protected_feature(self):
+        return self.protected_features
+
+    def get_target_column(self):
+        return self.target_column
+
+    def get_outlier_file(self):
+        return self.outlier_data_file
+
+    def get_favourable_outcome(self):
+        return self.favourable_outcome
+
+    def get_factsheet_file(self):
+        return self.factsheet_file
+
+    def get_model_file(self):
+        return self.model_file
+
+    def get_metrics_mapping_file(self):
+        return self.metrics_mappings_file
+
+    def get_weights_metrics(self):
+        return self.weights_metrics
+
+    def get_weights_pillars(self):
+        return self.weights_pillars

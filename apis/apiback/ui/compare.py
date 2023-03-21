@@ -5,7 +5,10 @@ from ...models import CustomUser, Scenario, ScenarioSolution
 from ...views import BASE_DIR
 from ...apiback.public import save_files_return_paths
 from rest_framework.response import Response
-from ..public import analyse_fairness, analyse_explainability, analyse_robustness, analyse_methodology
+from algorithms.supervised.Functions.Fairness.FarinessScore_supervised import get_fairness_score_supervised as analyse_fairness
+from algorithms.supervised.Functions.Explainability.ExplainabilityScore_supervised import get_explainability_score_supervised as analyse_explainability
+from algorithms.supervised.Functions.Accountability.AccountabilityScore_supervised import get_accountability_score_supervised as analyse_methodology
+from algorithms.supervised.Functions.Robustness.Robustness_supervised import get_robustness_score_supervised as analyse_robustness
 
 
 class compare(APIView):
@@ -28,13 +31,17 @@ class compare(APIView):
             DEFAULT_TARGET_COLUMN_INDEX = -1
             import pandas as pd
 
-            def get_performance_metrics(model, test_data, target_column):
+            def get_performance_metrics(model, test_data, target_column, solution_type):
                 model, test_data = save_files_return_paths(model, test_data)
-                model = pd.read_pickle(model)
+                if (solution_type == 'supervised'):
+                    model = pd.read_pickle(model)
+                else:
+                    from joblib import load
+                    model = load(model)
                 test_data = pd.read_csv(test_data)
 
-                y_test = test_data[target_column]
-                y_true = y_test.values.flatten()
+                # y_test = test_data[target_column]
+                # y_true = y_test.values.flatten()
 
                 if target_column:
                     X_test = test_data.drop(target_column, axis=1)
@@ -44,6 +51,8 @@ class compare(APIView):
                     y_test = test_data.reset_index(
                         drop=True).iloc[:, DEFAULT_TARGET_COLUMN_INDEX:]
                     y_true = y_test.values.flatten()
+
+                print('test:', X_test, y_test, y_true)
                 if (isinstance(model, tf.keras.Sequential)):
                     y_pred_proba = model.predict(X_test)
                     y_pred = np.argmax(y_pred_proba, axis=1)
@@ -85,13 +94,17 @@ class compare(APIView):
 
                 return performance_metrics
 
-            def get_performance_metrics2(model, test_data, target_column):
+            def get_performance_metrics2(model, test_data, target_column, solution_type):
                 model, test_data = save_files_return_paths(model, test_data)
-                model = pd.read_pickle(model)
+                if (solution_type == 'supervised'):
+                    model = pd.read_pickle(model)
+                else:
+                    from joblib import load
+                    model = load(model)
                 test_data = pd.read_csv(test_data)
 
-                y_test = test_data[target_column]
-                y_true = y_test.values.flatten()
+                # y_test = test_data[target_column]
+                # y_true = y_test.values.flatten()
 
                 if target_column:
                     X_test = test_data.drop(target_column, axis=1)
@@ -154,18 +167,22 @@ class compare(APIView):
                     if i['scenario_id'] == scenario.id and i['solution_name'] == request.data['SelectSolution1']:
                         path_testdata = i['test_file']
                         path_module = i['model_file']
+                        solution_type = i['solution_type']
+                        target_column = i['target_column']
 
             print("Performance_Metrics reslt:", get_performance_metrics(
-                path_module, path_testdata, 'Target'))
+                path_module, path_testdata, target_column, solution_type))
 
             if scenarioobj:
                 for i in scenarioobj:
                     if i['scenario_id'] == scenario.id and i['solution_name'] == request.data['SelectSolution2']:
                         path_testdata = i['test_file']
                         path_module = i['model_file']
+                        solution_type = i['solution_type']
+                        target_column = i['target_column']
 
             print("Performance_Metrics reslt:", get_performance_metrics2(
-                path_module, path_testdata, 'Target'))
+                path_module, path_testdata, target_column, solution_type))
 
             def get_factsheet_completeness_score(factsheet):
                 propdic = {}
@@ -203,7 +220,7 @@ class compare(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'media/TestValues/factsheet.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj1:
                 for i in scenarioobj1:
@@ -249,13 +266,13 @@ class compare(APIView):
                 config_methodology = mappings_config["methodology"]
 
                 methodology_config = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/Accountability/default.json')
                 config_explainability = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/explainability/default.json')
                 config_fairness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/fairness/default.json')
                 config_robustness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/robustness/default.json')
 
                 def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
                     output = dict(
@@ -459,11 +476,11 @@ class compare(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'apis/TestValues/factsheet.json')
             config_weights = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
+                BASE_DIR, 'apis/TestValues/Weights/default.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
             factsheet = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj:
                 for i in scenarioobj:
@@ -488,13 +505,13 @@ class compare(APIView):
                 config_methodology = mappings_config["methodology"]
 
                 methodology_config = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/Accountability/default.json')
                 config_explainability = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/explainability/default.json')
                 config_fairness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/fairness/default.json')
                 config_robustness = os.path.join(
-                    BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
+                    BASE_DIR, 'apis/TestValues/Mappings/robustness/default.json')
 
                 def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
                     output = dict(
@@ -702,9 +719,9 @@ class compare(APIView):
             path_factsheet = os.path.join(
                 BASE_DIR, 'apis/TestValues/factsheet.json')
             config_weights = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Weights/default.json')
+                BASE_DIR, 'apis/TestValues/Weights/default.json')
             mappings_config = os.path.join(
-                BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj:
                 for i in scenarioobj:

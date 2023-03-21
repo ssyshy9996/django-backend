@@ -10,10 +10,15 @@ class dashboard(APIView):
     def get(self, request, email):
         uploaddic = {}
         userexist = CustomUser.objects.get(email=email)
-        scenarioobj = ScenarioSolution.objects.filter(
-            user_id=userexist.id).values().order_by('id')
+        supscenarioobj = ScenarioSolution.objects.filter(
+            user_id=userexist.id, solution_type='supervised').values().order_by('id')
+
+        unsupscenarioobj = ScenarioSolution.objects.filter(
+            user_id=userexist.id, solution_type='unsupervised').values().order_by('id')
 
         scenarios = Scenario.objects.filter(user_id=userexist.id).values()
+        scenarioobj = ScenarioSolution.objects.filter(
+            user_id=userexist.id).values()
         uploaddic['scenarioList'] = scenarios
         uploaddic['solutionList'] = scenarioobj
 
@@ -70,8 +75,9 @@ class dashboard(APIView):
                     }
                 }
             else:
-                weights_metrics_unsup = pd.read_json(weights_metrics_unsup)
+                weights_metrics_unsup = pd.read_json(weights_metrics_path)
 
+            print('path:', weights_pillars_path)
             if (weights_pillars_path is None):
                 weights_pillars_unsup = {"pillars": {
                     "fairness": 0.25,
@@ -80,7 +86,7 @@ class dashboard(APIView):
                     "methodology": 0.25
                 }}
             else:
-                weights_pillars_unsup = pd.read_json(weights_pillars_unsup)
+                weights_pillars_unsup = pd.read_json(weights_pillars_path)
 
             try:
                 foo5 = weights_metrics_unsup["accountability"]
@@ -140,7 +146,6 @@ class dashboard(APIView):
 
             dict_result_unsupervised = {"Metricscores": dict_metric_scores,
                                         "Pillarscores": dict_pillars_scores, "Trustscore": trust_score_unsupervised}
-            print("DICT RESULT UNSUP: ", dict_result_unsupervised)
             return dict_result_unsupervised
 
         def finalScore_supervised(model_path, training_dataset_path, test_dataset_path, facsheet_path, metrics_mappings_path, weights_metrics_path=None, weights_pillars_path=None):
@@ -162,6 +167,7 @@ class dashboard(APIView):
             clever_score, clique_method_score, confidence_score, er_carlini_wagner_score, er_deep_fool_attack_score, er_fast_gradient_attack_score, loss_sensitivity_score = foo4[
                 "clever_score"], foo4["clique_method"], foo4["confidence_score"], foo4["er_carlini_wagner_attack"], foo4["er_deepfool_attack"], foo4["er_fast_gradient_attack"], foo4["loss_sensitivity"]
 
+            print('weight path:', weights_metrics_path)
             if (weights_metrics_path is None):
                 weights_metrics = {
                     "fairness": {
@@ -203,8 +209,9 @@ class dashboard(APIView):
                     }
                 }
             else:
-                weights_metrics = pd.read_json(weights_metrics)
+                weights_metrics = pd.read_json(weights_metrics_path)
 
+            print('weight path:', weights_pillars_path)
             if (weights_pillars_path is None):
                 weights_pillars = {"pillars": {
                     "fairness": 0.25,
@@ -288,11 +295,10 @@ class dashboard(APIView):
 
             dict_result_supervised = {"Metricscores": dict_metric_scores,
                                       "Pillarscores": dict_pillars_scores, "Trustscore": trust_score_supervised}
-            print("DICT RESULT SUP: ", dict_result_supervised)
             return dict_result_supervised
 
-        if scenarioobj:
-            for i in scenarioobj:
+        if supscenarioobj:
+            for i in supscenarioobj:
                 path_testdata = i["test_file"]
                 path_module = i["model_file"]
                 path_traindata = i["training_file"]
@@ -306,7 +312,7 @@ class dashboard(APIView):
                         i['metrics_mapping_file'])[0]
                 except:
                     mappings_config = os.path.join(
-                        BASE_DIR, 'apis/MappingsWeightsMetrics/Mappings/default.json')
+                        BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars = save_files_return_paths(
                 path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars)
@@ -320,7 +326,7 @@ class dashboard(APIView):
                 except:
                     uploaddic['accountability_score'] = resultSuper['Pillarscores']['Accountabilityscore']
 
-                uploaddic['trust_score'] = resultSuper['Trustscore']['Trustscore']
+                uploaddic['trust_score'] = resultSuper['Trustscore']
 
                 uploaddic['explainability_score'] = resultSuper['Pillarscores']['Explainabilityscore']
                 uploaddic['robustness_score'] = resultSuper['Pillarscores']['Robustnessscore']
@@ -351,8 +357,26 @@ class dashboard(APIView):
                 uploaddic['factsheet_completeness'] = resultSuper['Metricscores'][
                     'Metricscores']['Accountabilityscore']['Factsheecompletnessscore']
 
-            elif (soulutionType == 'unsupervised'):
-                print('is this called?')
+        if unsupscenarioobj:
+            for i in unsupscenarioobj:
+                path_testdata = i["test_file"]
+                path_module = i["model_file"]
+                path_traindata = i["training_file"]
+                path_factsheet = i["factsheet_file"]
+                path_outliersdata = i['outlier_data_file']
+                soulutionType = i['solution_type']
+                weights_metrics = i['weights_metrics']
+                weights_pillars = i['weights_pillars']
+                try:
+                    mappings_config = save_files_return_paths(
+                        i['metrics_mapping_file'])[0]
+                except:
+                    mappings_config = os.path.join(
+                        BASE_DIR, 'apis/TestValues/Mappings/default.json')
+            path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars = save_files_return_paths(
+                path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars)
+
+            if (soulutionType == 'unsupervised'):
                 resultUnsuper = unsupervised_FinalScore(
                     path_module, path_traindata, path_testdata, path_outliersdata, path_factsheet, mappings_config, weights_metrics, weights_pillars)
 
@@ -361,8 +385,6 @@ class dashboard(APIView):
                     uploaddic['unsupervised_methodology_score'] = resultUnsuper['Pillarscores']['Accountabilityscore']
                 except:
                     uploaddic['accountability_score'] = resultUnsuper['Pillarscores']['Accountabilityscore']
-
-                print('result:', resultUnsuper)
 
                 uploaddic['unsupervised_trust_score'] = resultUnsuper['Trustscore']
 

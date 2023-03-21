@@ -7,13 +7,14 @@ def get_underfitting_score_supervised(model=not None, training_dataset=None, tes
     except:
         import collections
         import pandas
-        import Functions.Fairness.helpers_fairness_supervised
         import numpy as np
 
-    print("GET UNDERFITTING SCORE MODEL: ",model)
-    
-    test_dataset, factsheet, model = pandas.read_csv(
-        test_dataset), pandas.read_json(factsheet), pandas.read_pickle(model)
+    print("GET UNDERFITTING SCORE MODEL: ", model)
+
+    test_dataset = pandas.read_csv(test_dataset)
+    print('factsheet:', factsheet)
+    factsheet = pandas.read_json(factsheet)
+    model = pandas.read_pickle(model)
 
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')

@@ -33,6 +33,8 @@ class solution(APIView):
             else:
                 mapFile = request.data['MapFile']
 
+            print('req dta:', request.data)
+
             try:
                 userexist = CustomUser.objects.get(
                     email=request.data['emailid'])

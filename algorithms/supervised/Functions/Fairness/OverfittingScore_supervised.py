@@ -81,14 +81,14 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
             training_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
                 model, training_dataset, factsheet)
         except:
-            training_accuracy = Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
+            training_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
                 model, training_dataset, factsheet)
 
         try:
             test_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
                 model, test_dataset, factsheet)
         except:
-            test_accuracy = Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
+            test_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
                 model, test_dataset, factsheet)
 
         properties["Training Accuracy"] = "{:.2f}%".format(
