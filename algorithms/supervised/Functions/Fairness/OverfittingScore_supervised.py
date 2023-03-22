@@ -12,8 +12,11 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
         import Functions.Fairness.helpers_fairness_supervised
         import numpy as np
 
-    training_dataset, test_dataset, factsheet, model, mappings = pandas.read_csv(training_dataset), pandas.read_csv(
-        test_dataset), pandas.read_json(factsheet), pandas.read_pickle(model), pandas.read_json(mappings)
+    training_dataset = pandas.read_csv(training_dataset)
+    test_dataset = pandas.read_csv(test_dataset)
+    factsheet = pandas.read_json(factsheet)
+    model = pandas.read_pickle(model)
+    mappings = pandas.read_json(mappings)
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')
 

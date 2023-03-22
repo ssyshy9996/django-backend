@@ -16,6 +16,14 @@ class solutiondetail(APIView):
             'target_column': solutionDetail.target_column
         }, status=200)
 
+    def delete(self, request, id):
+        print('delete id:', id)
+        solutiondetail = ScenarioSolution.objects.get(id=id).delete()
+
+        return Response({
+            'Delete ok',
+        }, status=200)
+
     def put(self, request):
         solutionDetail = ScenarioSolution.objects.get(
             id=request.data['SolutionId'])

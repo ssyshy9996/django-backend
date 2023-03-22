@@ -17,6 +17,11 @@ class scenario(APIView):
         else:
             return Response("Not Exist", status=201)
 
+    def delete(self, request, scenarioId):
+        print('id:', scenarioId)
+        Scenario.objects.get(id=scenarioId).delete()
+        return Response('Delete Success', status=200)
+
     def put(self, request):
         scenario = Scenario.objects.get(
             id=request.data['id'])
