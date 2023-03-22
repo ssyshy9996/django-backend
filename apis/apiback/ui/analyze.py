@@ -9,6 +9,10 @@ from algorithms.supervised.Functions.Fairness.FarinessScore_supervised import ge
 from algorithms.supervised.Functions.Explainability.ExplainabilityScore_supervised import get_explainability_score_supervised as analyse_explainability
 from algorithms.supervised.Functions.Accountability.AccountabilityScore_supervised import get_accountability_score_supervised as analyse_methodology
 from algorithms.supervised.Functions.Robustness.Robustness_supervised import get_robustness_score_supervised as analyse_robustness
+from sklearn import metrics
+import numpy as np
+import tensorflow as tf
+from apis.apiback.ui.dashboard import unsupervised_FinalScore
 
 
 class analyze(APIView):
@@ -40,29 +44,29 @@ class analyze(APIView):
                         Description.append(i['description']),
 
             uploaddic['ScenarioName'] = ScenarioName
-            uploaddic['LinktoDataset'] = LinktoDataset
-            uploaddic['Description'] = Description
-
-            from sklearn import metrics
-            import numpy as np
-            import tensorflow as tf
 
             DEFAULT_TARGET_COLUMN_INDEX = -1
             import pandas as pd
 
-            def get_performance_metrics(model, test_data, target_column, train_data, factsheet, solution_type):
-                model, test_data = save_files_return_paths(model, test_data)
-                if (solution_type == 'supervised'):
+            def get_performance_metrics(model, test_data, target_column, train_data, factsheet):
+                print("GET PERFORMANCE METRICS REACHED")
+                try:
                     model = pd.read_pickle(model)
-                else:
-                    from joblib import load
-                    model = load(model)
-
+                    print("PERFORMANCE METRICS MODEL: ", model)
+                except:
+                    print("MODEL ERROR")
                 test_data = pd.read_csv(test_data)
+                print("PERFORMANCE METRICS test_data: ", test_data)
 
                 train_data = pd.read_csv(train_data)
+                print("PERFORMANCE METRICS train_data: ", train_data)
+                import pandas
+                factsheet1 = os.path.join(BASE_DIR, factsheet)
+                factsheet2 = pandas.read_json(factsheet)
+                print("PERFORMANCE METRICS factsheet1: ", factsheet1)
 
-                factsheet = os.path.join(BASE_DIR, factsheet)
+                print("PERFORMANCE METRICS factsheet2: ", factsheet2)
+
                 with open(factsheet, 'r') as g:
                     factsheet = json.loads(g.read())
 
@@ -70,11 +74,9 @@ class analyze(APIView):
                 # y_true = y_test.values.flatten()
 
                 if target_column:
-                    print('target called')
                     X_test = test_data.drop(target_column, axis=1)
                     y_test = test_data[target_column]
                 else:
-                    print('target uncalled')
                     X_test = test_data.iloc[:, :DEFAULT_TARGET_COLUMN_INDEX]
                     y_test = test_data.reset_index(
                         drop=True).iloc[:, DEFAULT_TARGET_COLUMN_INDEX:]
@@ -87,7 +89,7 @@ class analyze(APIView):
                     labels = np.unique(np.array([y_pred, y_true]).flatten())
 
                 performance_metrics = pd.DataFrame({
-                    "accuracy": [metrics.accuracy_score(y_true, y_pred.round(), normalize=False)],
+                    "accuracy": [metrics.accuracy_score(y_true, y_pred)],
                     "global recall": [metrics.recall_score(y_true, y_pred, labels=labels, average="micro")],
                     "class weighted recall": [metrics.recall_score(y_true, y_pred, average="weighted")],
                     "global precision": [metrics.precision_score(y_true, y_pred, labels=labels, average="micro")],
@@ -111,6 +113,7 @@ class analyze(APIView):
                 uploaddic['classweightedf1score'] = (
                     "%.2f" % metrics.f1_score(y_true, y_pred, average="weighted"))
 
+                print("ERROR SURE")
                 if "properties" in factsheet:
                     factsheet = factsheet["properties"]
 
@@ -140,35 +143,45 @@ class analyze(APIView):
                 )
                 performance_metrics.rename(
                     columns={"index": "key", 0: "value"}, inplace=True)
-
                 return performance_metrics
 
-            path_testdata = os.path.join(BASE_DIR, 'apis/TestValues/test.csv')
-            path_module = os.path.join(BASE_DIR, 'apis/TestValues/model.pkl')
-            path_traindata = os.path.join(
-                BASE_DIR, 'apis/TestValues/train.csv')
-            path_factsheet = os.path.join(
-                BASE_DIR, 'apis/TestValues/factsheet.json')
-            mappings_config = os.path.join(
-                BASE_DIR, 'apis/TestValues/Mappings/default.json')
+            def detect_outliers_range(mdoel, df, threshold_mse):
+                import numpy as np
+                pred = mdoel.predict(df)
+                mse = np.mean(np.power(df - pred, 2), axis=1)
+                up_bound = threshold_mse[0]
+                bottom_bound = threshold_mse[1]
+                outliers = [(np.array(mse) < up_bound) &
+                            (np.array(mse) > bottom_bound)]
+                return outliers
 
-            print('sca:', scenario)
-            if scenarioobj:
-                for i in scenarioobj:
-                    if i['scenario_id'] == scenario[0]['id'] and i['solution_name'] == request.data['SelectSolution']:
-                        path_testdata = i['test_file']
-                        path_module = i['model_file']
-                        path_traindata = i['training_file']
-                        path_factsheet = i['factsheet_file']
-                        weights_metrics = i['weights_metrics']
-                        weights_pillars = i['weights_pillars']
-                        target_column = i['target_column']
-                        solution_type = i['solution_type']
+            def isKerasAutoencoder(model):
+                import keras
+                return isinstance(model, keras.engine.functional.Functional)
 
-            path_module, path_testdata, path_traindata, path_factsheet, weights_metrics, weights_pillars = save_files_return_paths(
-                path_module, path_testdata, path_traindata, path_factsheet, weights_metrics, weights_pillars)
-            print("Performance_Metrics reslt:", get_performance_metrics(
-                path_module, path_testdata, target_column, path_traindata, path_factsheet, solution_type))
+            def isIsolationForest(model):
+                from sklearn.ensemble import IsolationForest
+                return isinstance(model, IsolationForest)
+
+            def detect_outliers(mdoel, df, threshold_mse):
+                if (len(threshold_mse) == 2):
+                    return detect_outliers_range(mdoel, df, threshold_mse)
+                pred = mdoel.predict(df)
+                mse = np.mean(np.power(df - pred, 2), axis=1)
+                outliers = [np.array(mse) < threshold_mse]
+                return outliers
+
+            def compute_outlier_matrix(model, data, outlier_thresh, print_details=False):
+                if isKerasAutoencoder(model):
+                    mad_outliers = detect_outliers(
+                        model, data, outlier_thresh)[0]
+                elif isIsolationForest(model):
+                    mad_outliers = model.predict(data)
+                else:
+                    mad_outliers = model.predict(data)
+                if print_details:
+                    print("\t outlier matrix: ", mad_outliers)
+                return mad_outliers
 
             def get_factsheet_completeness_score(factsheet):
                 propdic = {}
@@ -198,15 +211,6 @@ class analyze(APIView):
                         score = round(ctr/n*5)
 
                 return result(score=score, properties=properties)
-
-            path_testdata = os.path.join(BASE_DIR, 'apis/TestValues/test.csv')
-            path_module = os.path.join(BASE_DIR, 'apis/TestValues/model.pkl')
-            path_traindata = os.path.join(
-                BASE_DIR, 'apis/TestValues/train.csv')
-            path_factsheet = os.path.join(
-                BASE_DIR, 'apis/TestValues/factsheet.json')
-            mappings_config = os.path.join(
-                BASE_DIR, 'apis/TestValues/Mappings/default.json')
 
             if scenarioobj:
                 for i in scenarioobj:
@@ -238,16 +242,7 @@ class analyze(APIView):
                 config_robustness = mappings_config["robustness"]
                 config_methodology = mappings_config["methodology"]
 
-                methodology_config = os.path.join(
-                    BASE_DIR, 'apis/TestValues/Mappings/Accountability/default.json')
-                config_explainability = os.path.join(
-                    BASE_DIR, 'apis/TestValues/Mappings/explainability/default.json')
-                config_fairness = os.path.join(
-                    BASE_DIR, 'apis/TestValues/Mappings/fairness/default.json')
-                config_robustness = os.path.join(
-                    BASE_DIR, 'apis/TestValues/Mappings/robustness/default.json')
-
-                def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config):
+                def trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness, config_explainability, config_robustness, methodology_config, ):
                     output = dict(
                         fairness=analyse_fairness(
                             model, train_data, test_data, factsheet, config_fairness),
@@ -267,17 +262,21 @@ class analyze(APIView):
                 with open(mappingConfig1, 'r') as f:
                     default_map = json.loads(f.read())
 
+                print('path:', factsheet)
                 factsheet = save_files_return_paths(factsheet)[0]
                 with open(factsheet, 'r') as g:
                     factsheet = json.loads(g.read())
 
+                scores = []
                 if default_map == mappings_config:
-                    if "scores" in factsheet.keys() and "properties" in factsheet.keys() and not recalc:
+                    print('default map called')
+                    if "scores" in factsheet.keys() and "properties" in factsheet.keys():
                         scores = factsheet["scores"]
                         properties = factsheet["properties"]
                 else:
+                    print('default map not called')
                     result = trusting_AI_scores(model, train_data, test_data, factsheet, config_fairness,
-                                                config_explainability, config_robustness, config_methodology)
+                                                config_explainability, config_robustness, config_methodology, solution_type)
                     scores = result.score
                     factsheet["scores"] = scores
                     properties = result.properties
@@ -459,12 +458,59 @@ class analyze(APIView):
             if scenarioobj:
                 for i in scenarioobj:
                     if (i['scenario_id'] == scenario[0]['id'] and i['solution_name'] == request.data['SelectSolution']):
-                        path_testdata = i['test_file']
-                        path_module = i['model_file']
-                        path_traindata = i['training_file']
-                        path_factsheet = i['factsheet_file']
+                        path_testdata = i["test_file"]
+                        path_module = i["model_file"]
+                        path_traindata = i["training_file"]
+                        path_factsheet = i["factsheet_file"]
+                        path_outliersdata = i['outlier_data_file']
+                        soulutionType = i['solution_type']
+                        weights_metrics = i['weights_metrics']
+                        weights_pillars = i['weights_pillars']
+                        # target_column = i['target_column']
 
-            print("Final Score result:", get_final_score(path_module, path_traindata,
-                  path_testdata, config_weights, mappings_config, path_factsheet))
+            path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars = save_files_return_paths(
+                path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars)
+
+            # print("Performance_Metrics reslt:", get_performance_metrics(
+            #     path_module, path_testdata, target_column, path_traindata, path_factsheet))
+            if (soulutionType == 'unsupervised'):
+                result = unsupervised_FinalScore(
+                    path_module, path_traindata, path_testdata, path_outliersdata, path_factsheet, mappings_config, weights_metrics, weights_pillars)
+                uploaddic['disparate_impact'] = result['Metricscores']['Metricscores']['Fairnessscore']['Disparateimpactscore']
+                uploaddic['underfitting'] = result['Metricscores']['Metricscores']['Fairnessscore']['Underfittingscore']
+                uploaddic['overfitting'] = result['Metricscores']['Metricscores']['Fairnessscore']['Overfittingscore']
+                uploaddic['statistical_parity_difference'] = result['Metricscores'][
+                    'Metricscores']['Fairnessscore']['Statisticalparitydifferencescore']
+                uploaddic['fairness_score'] = result['Pillarscores']['Fairnessscore']
+                uploaddic['normalization'] = result['Metricscores']['Metricscores']['Accountabilityscore']['Normalizationscore']
+                uploaddic['missing_data'] = result['Metricscores']['Metricscores']['Accountabilityscore']['Missingdatascore']
+                uploaddic['regularization'] = result['Metricscores']['Metricscores']['Accountabilityscore']['Regularizationscore']
+                uploaddic['train_test_split'] = result['Metricscores']['Metricscores']['Accountabilityscore']['Traintestsplitscore']
+                uploaddic['factsheet_completeness'] = result['Metricscores']['Metricscores']['Accountabilityscore']['Factsheecompletnessscore']
+                uploaddic['methodology_score'] = result['Pillarscores']['Accountabilityscore']
+                uploaddic['correlated_features'] = result['Metricscores']['Metricscores']['Explainabilityscore']['Correlatedfeaturesscore']
+                uploaddic['model_size'] = result['Metricscores']['Metricscores']['Explainabilityscore']['Modelsizescore']
+                uploaddic['explainability_score'] = result['Pillarscores']['Explainabilityscore']
+                uploaddic['robustness_score'] = result['Pillarscores']['Robustnessscore']
+                uploaddic['trust_score'] = result['Trustscore']
+
+            else:
+                print("Final Score result:", get_final_score(path_module, path_traindata,
+                                                             path_testdata, config_weights, mappings_config, path_factsheet))
+                # result = finalScore_supervised(
+                #     path_module, path_traindata, path_testdata, path_factsheet, mappings_config, weights_metrics, weights_pillars)
+
+            # uploaddic['class_balance'] =
+            # uploaddic['equal_opportunity_difference'] =
+            # uploaddic['average_odds_difference'] =
+            # uploaddic['algorithm_class'] =
+            # uploaddic['feature_relevance'] = feature_relevance
+            # uploaddic['confidence_score'] = confidence_score
+            # uploaddic['clique_method'] = clique_method
+            # uploaddic['clever_score'] = clever_score
+            # uploaddic['loss_sensitivity'] = loss_sensitivity
+            # uploaddic['er_fast_gradient_attack'] = er_fast_gradient_attack
+            # uploaddic['er_carlini_wagner_attack'] = er_carlini_wagner_attack
+            # uploaddic['er_deepfool_attack'] = er_deepfool_attack
 
         return Response(uploaddic)

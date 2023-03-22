@@ -41,8 +41,8 @@ urlpatterns = [
     path('loss_sensitivity_score/', robust.get_loss_sensitivity_score),
 
     # 3)Explainability Scores
-    path('api/modelsize_score/', explain.get_modelsize_score),
-    path('api/correlated_features_score/',
+    path('modelsize_score/', explain.get_modelsize_score),
+    path('correlated_features_score/',
          explain.get_correlated_features_score),
     path('algorithm_class_score/', explain.get_algorithm_class_score),
     path('feature_relevance_score/', explain.get_feature_relevance_score),

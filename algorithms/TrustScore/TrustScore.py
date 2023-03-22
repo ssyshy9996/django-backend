@@ -85,7 +85,7 @@ def trusting_AI_scores_unsupervised(model=not None, training_dataset=not None, t
     print('reached here')
     output = dict(
         fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings, target_column,
-                                             outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
+                                                          outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
         explainability=analyse_explainability_supervised_unsupervised(model=model, training_dataset=training_dataset, test_dataset=test_dataset, factsheet=factsheet, mappings=mappings, target_column=target_column,
                                                                       outliers_data=outliers_data, thresholds=thresholds, outlier_thresholds=outlier_thresholds, outlier_percentage=outlier_percentage, high_cor=high_cor, print_details=print_details),
         robustness=analyse_robustness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
@@ -93,9 +93,29 @@ def trusting_AI_scores_unsupervised(model=not None, training_dataset=not None, t
         accountability=analyse_accountability_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
                                                            target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details)
     )
-    scores = dict((k, v.score) for k, v in output.items())
-    properties = dict((k, v.properties) for k, v in output.items())
 
+    for mainkey in output:
+        print("FAIRNESS ITEM: ", output[mainkey])
+        for key in output[mainkey].score:
+            print('key => ', key, output[mainkey].score[key])
+            if numpy.isnan(output[mainkey].score[key]):
+                output[mainkey].score[key] = 1
+
+    print("FAIRNESS WORKING: ", output["fairness"]),
+    print("ROBUSTNESS WORKING: ", output["robustness"]),
+    print("ACCOUNTABILITY WORKING: ", output["accountability"]),
+    print("EXPLAINABILITY WORKING: ", output["explainability"])
+
+    try:
+        scores = dict((k, v.score) for k, v in output.items())
+    except:
+        print("SCORES NOT WORKING")
+    try:
+        properties = dict((k, v.properties) for k, v in output.items())
+    except:
+        print("PROPERTIES NOT WORKING")
+    print("EVERYTHING FINE")
+    print("RESULT", result(score=scores, properties=properties))
     return result(score=scores, properties=properties)
 
 
@@ -111,11 +131,10 @@ def calculate_pillar_scores(scores, weights, weights_pillars):
     return pillar_scores
 
 
-
 def trusting_AI_scores_unsupervised2(model=not None, training_dataset=not None, test_dataset=not None, factsheet=not None, mappings=not None, target_column=not None, outliers_data=not None, thresholds=not None, outlier_thresholds=not None, penalty_outlier=None, outlier_percentage=not None, high_cor=not None, print_details=True):
     output = dict(
-        #fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
-                                                          #target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
+        # fairness=analyse_fairness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
+        # target_column, outliers_data, thresholds, outlier_thresholds, outlier_percentage, high_cor, print_details),
         explainability=analyse_explainability_supervised_unsupervised(model=model, training_dataset=training_dataset, test_dataset=test_dataset, factsheet=factsheet, mappings=mappings, target_column=target_column,
                                                                       outliers_data=outliers_data, thresholds=thresholds, outlier_thresholds=outlier_thresholds, outlier_percentage=outlier_percentage, high_cor=high_cor, print_details=print_details),
         robustness=analyse_robustness_supervised_unsupervised(model, training_dataset, test_dataset, factsheet, mappings,
