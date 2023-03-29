@@ -82,6 +82,7 @@ urlpatterns = [
 
     path('solution', solution.solution.as_view()),
     path('solution/<str:email>', solution.solution.as_view()),
+    path('solution_list/<str:email>', solution.solution_list.as_view()),
 
     path('userpage/<str:email>', userpage.userpage.as_view()),
     path('userpage', userpage.userpage.as_view()),
@@ -94,6 +95,7 @@ urlpatterns = [
 
     path('scenario/<int:scenarioId>',
          scenario.scenario.as_view(), name="scenario"),
+    path('scenario/<str:email>', scenario.scenario_list.as_view(), name="scenario"),
     path('scenario', scenario.scenario.as_view(), name="scenario"),
 
     path('solution_detail/<int:id>',

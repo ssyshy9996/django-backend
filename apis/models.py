@@ -77,8 +77,11 @@ class Scenario(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.ForeignKey(CustomUser,
                              on_delete=models.CASCADE)
-    scenario_name = models.CharField(max_length=100, unique=True, null=False)
+    scenario_name = models.CharField(max_length=100, null=False)
     description = models.CharField(max_length=200)
+
+    class Meta:
+        unique_together = ('user', 'scenario_name',)
 
     def __str__(self):
         return f"{self.pk}.{self.user}"
@@ -128,6 +131,9 @@ class ScenarioSolution(models.Model):
         upload_to='files', blank=True, null=True)
     weights_pillars = models.FileField(
         upload_to='files', blank=True, null=True)
+
+    class Meta:
+        unique_together = ('user', 'scenario', 'solution_name')
 
     def __str__(self):
         return f"{self.pk}.{self.solution_name}"
@@ -182,3 +188,46 @@ class ScenarioSolution(models.Model):
 
     def get_weights_pillars(self):
         return self.weights_pillars
+
+
+class Score(models.Model):
+    id = models.AutoField(primary_key=True)
+    solution = models.ForeignKey(ScenarioSolution, on_delete=models.CASCADE)
+
+    # Fairness
+    fairness = models.FloatField(null=True)
+    underfitting = models.FloatField(null=True)
+    overfitting = models.FloatField(null=True)
+    statistical = models.FloatField(null=True)
+    disparate = models.FloatField(null=True)
+    equal = models.FloatField(null=True)
+    average = models.FloatField(null=True)
+    class_balance = models.FloatField(null=True)
+
+    # explainability
+    explain = models.FloatField(null=True)
+    correlated = models.FloatField(null=True)
+    model_size = models.FloatField(null=True)
+    permutation = models.FloatField(null=True)
+    feature = models.FloatField(null=True)
+    algorithm = models.FloatField(null=True)
+
+    # robustness
+    robust = models.FloatField(null=True)
+    clever = models.FloatField(null=True)
+    confidence = models.FloatField(null=True)
+    clique = models.FloatField(null=True)
+    er_fast = models.FloatField(null=True)
+    er_carlini = models.FloatField(null=True)
+    er_deep = models.FloatField(null=True)
+    loss_sensitivity = models.FloatField(null=True)
+
+    # accountability
+    account = models.FloatField(null=True)
+    train_test_split = models.FloatField(null=True)
+    missing_data = models.FloatField(null=True)
+    normalization = models.FloatField(null=True)
+    regularization = models.FloatField(null=True)
+    factsheet = models.FloatField(null=True)
+
+    trust = models.FloatField(null=True)

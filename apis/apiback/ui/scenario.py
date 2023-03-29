@@ -5,7 +5,6 @@ from ...models import Scenario, CustomUser
 
 class scenario(APIView):
     def get(self, request, scenarioId):
-
         scenario = Scenario.objects.get(id=scenarioId)
 
         print('id:', scenario.description, scenario.scenario_name)
@@ -44,6 +43,14 @@ class scenario(APIView):
         #     }, status=204)
 
         user = CustomUser.objects.get(email=request.data['emailid'])
+        # isExist = Scenario.objects.get(
+        #     scenario_name=request.data['ScenarioName'],
+        #     use_id=user.id
+        # )
+
+        # if isExist:
+        #     return Response({'Save Failed'}, status=400)
+
         try:
             newScenario = Scenario.objects.create(
                 scenario_name=request.data['ScenarioName'],
@@ -54,5 +61,16 @@ class scenario(APIView):
             newScenario.save()
 
             return Response({'Save Success'}, status=200)
-        except:
+        except Exception as e:
+            print('except:', e)
             return Response({'Save Failed'}, status=400)
+
+
+class scenario_list(APIView):
+    def get(self, request, email):
+        print('email:', email)
+        user = CustomUser.objects.get(email=email)
+        scenarios = Scenario.objects.filter(user_id=user.id).values()
+        uploaddic = {}
+        uploaddic['scenarioList'] = scenarios
+        return Response(uploaddic, status=200)

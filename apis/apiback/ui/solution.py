@@ -67,3 +67,14 @@ class solution(APIView):
             except Exception as e:
                 print('errror:', e)
                 return Response("Error occured", status=201)
+
+
+class solution_list(APIView):
+    def get(self, request, email):
+        userexist = CustomUser.objects.get(email=email)
+        scenarioobj = ScenarioSolution.objects.filter(
+            user_id=userexist.id).values()
+        uploaddic = {}
+        uploaddic['solutionList'] = scenarioobj
+
+        return Response(uploaddic, status=200)

@@ -292,12 +292,6 @@ class dashboard(APIView):
         unsupscenarioobj = ScenarioSolution.objects.filter(
             user_id=userexist.id, solution_type='unsupervised').values().order_by('id')
 
-        scenarios = Scenario.objects.filter(user_id=userexist.id).values()
-        scenarioobj = ScenarioSolution.objects.filter(
-            user_id=userexist.id).values()
-        uploaddic['scenarioList'] = scenarios
-        uploaddic['solutionList'] = scenarioobj
-
         if supscenarioobj:
             for i in supscenarioobj:
                 path_testdata = i["test_file"]
@@ -414,8 +408,15 @@ class dashboard(APIView):
                 uploaddic['unsupervised_factsheet_completeness'] = resultUnsuper['Metricscores'][
                     'Metricscores']['Accountabilityscore']['Factsheecompletnessscore']
         try:
+            import numpy
             if (supscenarioobj or unsupscenarioobj):
                 print('retured:data', uploaddic)
+                for mainKey in uploaddic:
+                    try:
+                        if (numpy.isnan(uploaddic[mainKey])):
+                            uploaddic[mainKey] = 1
+                    except:
+                        pass
                 a = Response(uploaddic, status=200)
                 print("RESPONSE VAL: ", a)
                 return a
