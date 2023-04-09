@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from ...models import CustomUser, Scenario, ScenarioSolution
+from .analyze import save_score
 
 
 class solution(APIView):
@@ -61,6 +62,10 @@ class solution(APIView):
                     weights_pillars=request.data['WeightPillar']
                 )
                 fileupload.save()
+                print('id:', fileupload.id)
+                solution = ScenarioSolution.objects.get(id=fileupload.id)
+
+                save_score(solution)
 
                 return Response("Successfully add!", status=200)
 

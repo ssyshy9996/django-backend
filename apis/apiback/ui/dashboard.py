@@ -217,6 +217,9 @@ def finalScore_supervised(model_path, training_dataset_path, test_dataset_path, 
         foo5["normalization"]*normalization_score+foo5["regularization"] * \
         regularization_score + \
         foo5["train_test_split"]*train_test_split_score
+    print('materials:', foo6["algorithm_class"],
+          algorithm_class_score, foo6["correlated_features"], correlated_features_score, foo6["model_size"], model_size_score,
+          foo6['feature_relevance'], feature_relevance_score)
     explainability_score_supervised = foo6["algorithm_class"]*algorithm_class_score+foo6["correlated_features"] * \
         correlated_features_score + \
         foo6["model_size"]*model_size_score + \

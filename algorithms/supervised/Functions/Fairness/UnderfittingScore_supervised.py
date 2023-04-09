@@ -9,10 +9,7 @@ def get_underfitting_score_supervised(model=not None, training_dataset=None, tes
         import pandas
         import numpy as np
 
-    print("GET UNDERFITTING SCORE MODEL: ", model)
-
     test_dataset = pandas.read_csv(test_dataset)
-    print('factsheet:', factsheet)
     factsheet = pandas.read_json(factsheet)
     model = pandas.read_pickle(model)
 
@@ -21,7 +18,7 @@ def get_underfitting_score_supervised(model=not None, training_dataset=None, tes
     if not high_cor:
         high_cor = 0.9
     if not thresholds:
-        thresholds = thresholds
+        thresholds = [0.05, 0.16, 0.28, 0.4]
 
     try:
         properties = {}
@@ -30,8 +27,8 @@ def get_underfitting_score_supervised(model=not None, training_dataset=None, tes
         score = 0
         test_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
             model, test_dataset, factsheet)
-        score = np.digitize(abs(test_accuracy), thresholds, right=False) + 1
 
+        score = np.digitize(abs(test_accuracy), thresholds, right=False) + 1
         properties["Test Accuracy"] = "{:.2f}%".format(test_accuracy*100)
 
         if score == 5:

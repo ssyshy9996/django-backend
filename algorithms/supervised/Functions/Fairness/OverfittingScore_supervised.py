@@ -20,9 +20,11 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')
 
+    print('map:', mappings)
     if not thresholds:
         thresholds = mappings["fairness"]["score_overfitting"]["thresholds"]["value"]
 
+    print('overfit next')
     try:
         properties = {}
         properties['Metric Description'] = "Overfitting is present if the training accuracy is significantly higher than the test accuracy"
@@ -57,12 +59,13 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
                 properties["Conclusion"] = "Model is strongly overfitting"
 
             properties["Score"] = str(overfitting_score)
-            return result(int(overfitting_score), properties=properties)
+            return result(score=int(overfitting_score), properties=properties)
         else:
             properties = {}
             properties['Metric Description'] = "Overfitting is present if the training accuracy is significantly higher than the test accuracy"
             properties['Depends on'] = 'Model, Training Data, Test Data'
             overfitting_score = np.nan
+            print('hererer??????')
             training_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
                 model, training_dataset, factsheet)
             test_accuracy = algorithms.supervised.Functions.Fairness.helpers_fairness_supervised.compute_accuracy(
@@ -74,8 +77,9 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
             properties["Train Test Accuracy Difference"] = "{:.2f}%".format(
                 (training_accuracy - test_accuracy)*100)
             properties["Conclusion"] = "Model is not overfitting"
-            return result(5, properties=properties)
+            return result(score=5, properties=properties)
     except Exception as e:
+        print('overfittingscore_super error:', e)
         properties = {}
         properties['Metric Description'] = "Overfitting is present if the training accuracy is significantly higher than the test accuracy"
         properties['Depends on'] = 'Model, Training Data, Test Data'
@@ -100,7 +104,7 @@ def get_overfitting_score_supervised(model=not None, training_dataset=not None, 
         properties["Train Test Accuracy Difference"] = "{:.2f}%".format(
             (training_accuracy - test_accuracy)*100)
         properties["Conclusion"] = "Model is not overfitting"
-        return result(5, properties=properties)
+        return result(score=5, properties=properties)
 
 
 """########################################TEST VALUES#############################################
