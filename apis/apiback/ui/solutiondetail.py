@@ -49,9 +49,9 @@ class solutiondetail(APIView):
             solutionDetail.protected_values = request.data['Protectedvalues']
         if (len(request.data['Favourableoutcome']) <= 0):
             solutionDetail.favourable_outcome = request.data['Favourableoutcome']
-        if (len(request.data['WeightMetric']) <= 0):
+        if (len(request.data['WeightMetric']) != 'undefined'):
             solutionDetail.weights_metrics = request.data['WeightMetric']
-        if (len(request.data['WeightPillar']) <= 0):
+        if (len(request.data['WeightPillar']) != 'undefined'):
             solutionDetail.weights_pillars = request.data['WeightPillar']
         solutionDetail.save()
 

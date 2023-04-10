@@ -231,3 +231,53 @@ class Score(models.Model):
     factsheet = models.FloatField(null=True)
 
     trust = models.FloatField(null=True)
+
+
+class MetricProperty(models.Model):
+    id = models.AutoField(primary_key=True)
+    solution = models.ForeignKey(ScenarioSolution, on_delete=models.CASCADE)
+
+    underfitting_property = models.JSONField(max_length=1000, null=True)
+    overfitting_property = models.JSONField(max_length=1000, null=True)
+    statistical_parity_difference_property = models.JSONField(
+        max_length=1000, null=True)
+    equal_opportunity_difference_property = models.JSONField(
+        max_length=1000, null=True)
+    average_odds_difference_property = models.JSONField(
+        max_length=1000, null=True)
+    disparate_impact_property = models.JSONField(max_length=1000, null=True)
+    class_balance_property = models.JSONField(max_length=1000, null=True)
+    algorithm_class_property = models.JSONField(max_length=1000, null=True)
+    correlated_features_property = models.JSONField(max_length=1000, null=True)
+    model_size_property = models.JSONField(max_length=1000, null=True)
+    feature_relevance_property = models.JSONField(max_length=1000, null=True)
+    permutation_feature_importance_property = models.JSONField(
+        max_length=1000, null=True)
+    normalization_property = models.JSONField(max_length=1000, null=True)
+    missing_data_property = models.JSONField(max_length=1000, null=True)
+    regularization_property = models.JSONField(max_length=1000, null=True)
+    train_test_split_property = models.JSONField(max_length=1000, null=True)
+    factsheet_completeness_property = models.JSONField(
+        max_length=1000, null=True)
+    confidence_score_property = models.JSONField(max_length=1000, null=True)
+    clique_method_property = models.JSONField(max_length=1000, null=True)
+    clever_score_property = models.JSONField(max_length=1000, null=True)
+    er_fast_gradient_attack_property = models.JSONField(
+        max_length=1000, null=True)
+    er_carlini_wagner_attack_property = models.JSONField(
+        max_length=1000, null=True)
+    er_deepfool_attack_property = models.JSONField(max_length=1000, null=True)
+    loss_sensitivity_property = models.JSONField(max_length=1000, null=True)
+
+
+class PerformanceMetrics(models.Model):
+    id = models.AutoField(primary_key=True)
+    solution = models.ForeignKey(ScenarioSolution, on_delete=models.CASCADE)
+
+    accuracy = models.FloatField(null=True)
+    globalrecall = models.FloatField(null=True)
+    classweightedrecall = models.FloatField(null=True)
+    globalprecision = models.FloatField(null=True)
+    classweightedprecision = models.FloatField(null=True)
+    globalf1score = models.FloatField(null=True)
+    classweightedf1score = models.FloatField(null=True)

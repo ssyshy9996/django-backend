@@ -1,9 +1,44 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from ...models import CustomUser, ScenarioSolution
-from ..public import get_score, save_files_return_paths
+from ..public import get_score, save_files_return_paths, get_metric
 from .analyze import get_properties_section, get_properties_section_unsupervised
 import pandas as pd
+
+
+def get_performance_metrics_supervised(model, test_data, target_column):
+    import pandas as pd
+    import tensorflow as tf
+    import numpy as np
+    import sklearn.metrics as metrics
+    model = pd.read_pickle(model)
+    print("MODEL workign")
+    print("TEST DATA working")
+    if target_column:
+        X_test = test_data.drop(target_column, axis=1)
+        y_test = test_data[target_column]
+    else:
+        X_test = test_data.iloc[:, :DEFAULT_TARGET_COLUMN_INDEX]
+        y_test = test_data.reset_index(
+            drop=True).iloc[:, DEFAULT_TARGET_COLUMN_INDEX:]
+
+    y_true = y_test.values.flatten()
+    if (isinstance(model, tf.keras.Sequential)):
+        y_pred_proba = model.predict(X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+    else:
+        y_pred = model.predict(X_test).flatten()
+    labels = np.unique(np.array([y_pred, y_true]).flatten())
+
+    dict_performance_metrics = {"accuracy": round(metrics.accuracy_score(y_true, y_pred), 2),
+                                "global recall": round(metrics.recall_score(y_true, y_pred, labels=labels, average="micro"), 2),
+                                "class weighted recall": round(metrics.recall_score(y_true, y_pred, average="weighted"), 2),
+                                "global precision": round(metrics.precision_score(y_true, y_pred, labels=labels, average="micro"), 2),
+                                "class weighted precision": round(metrics.precision_score(y_true, y_pred, average="weighted"), 2),
+                                "global f1 score": round(metrics.f1_score(y_true, y_pred, average="micro"), 2),
+                                "class weighted f1 score": round(metrics.f1_score(y_true, y_pred, average="weighted"), 2)}
+
+    return dict_performance_metrics
 
 
 class compare(APIView):
@@ -202,40 +237,43 @@ class compare(APIView):
 
             uploaddic['weight'] = metricData
 
-            # # for solution 1
-            # model_data = solution1.model_file
-            # test_data = solution1.test_file
-            # train_data = solution1.training_file
-            # factsheet = solution1.factsheet_file
-            # test_data, train_data, factsheet, model_data = save_files_return_paths(
-            #     f"{test_data}", f"{train_data}", f"{factsheet}", f"{model_data}")
-            # test_data = pd.read_csv(test_data)
-            # train_data = pd.read_csv(train_data)
-            # factsheet = pd.read_json(factsheet)
-            # uploaddic['ScenarioName'] = solution1.solution_name
-            # uploaddic['Description'] = solution1.description
-            # if (solution1.solution_type == 'supervised'):
-            #     data = get_properties_section(
-            #         train_data, test_data, factsheet)
-            #     uploaddic['ModelType'] = data[data.columns[1]][0]
-            #     uploaddic['TrainTestSplit'] = data[data.columns[1]][1]
-            #     uploaddic['DataSize'] = data[data.columns[1]][2]
-            #     uploaddic['NormalizationTechnique'] = data[data.columns[1]][3]
-            #     uploaddic['NumberofFeatures'] = data[data.columns[1]][4]
-            # else:
-            #     data = get_properties_section_unsupervised(
-            #         train_data, test_data, factsheet)
-            #     # uploaddic['ModelType'] = data[data.columns[1]][0]
-            #     uploaddic['TrainTestSplit'] = data[data.columns[1]][0]
-            #     uploaddic['DataSize'] = data[data.columns[1]][1]
-            #     uploaddic['NormalizationTechnique'] = data[data.columns[1]][2]
-            #     uploaddic['NumberofFeatures'] = data[data.columns[1]][3]
+            print("FACTSHEET VALUES: ",
+                  factsheet1["properties"]["methodology"]["factsheet_completeness"])
 
-            # # for solution 2
+            uploaddic['modelname1'] = factsheet1['properties']['methodology']['factsheet_completeness']['model_name'][1]
+            uploaddic['purposedesc1'] = factsheet1['properties']['methodology']['factsheet_completeness']['purpose_description'][1]
+            uploaddic['trainingdatadesc1'] = factsheet1['properties']['methodology']['factsheet_completeness']['training_data_description'][1]
+            uploaddic['modelinfo1'] = factsheet1['properties']['methodology']['factsheet_completeness']['model_information'][1]
+            uploaddic['authors1'] = factsheet1['properties']['methodology']['factsheet_completeness']['authors'][1]
+            uploaddic['contactinfo1'] = factsheet1['properties']['methodology']['factsheet_completeness']['contact_information'][1]
+
+            uploaddic['modelname2'] = factsheet2['properties']['methodology']['factsheet_completeness']['model_name'][1]
+            uploaddic['purposedesc2'] = factsheet2['properties']['methodology']['factsheet_completeness']['purpose_description'][1]
+            uploaddic['trainingdatadesc2'] = factsheet2['properties']['methodology']['factsheet_completeness']['training_data_description'][1]
+            uploaddic['modelinfo2'] = factsheet2['properties']['methodology']['factsheet_completeness']['model_information'][1]
+            uploaddic['authors2'] = factsheet2['properties']['methodology']['factsheet_completeness']['authors'][1]
+            uploaddic['contactinfo2'] = factsheet2['properties']['methodology']['factsheet_completeness']['contact_information'][1]
 
             try:
                 result1 = get_score(solution1.id)
                 result2 = get_score(solution2.id)
+                metric1 = get_metric(solution1.id)
+                metric2 = get_metric(solution2.id)
+                uploaddic['accuracy'] = metric1['accuracy']
+                uploaddic['globalrecall'] = metric1['globalrecall']
+                uploaddic['classweightedrecall'] = metric1['classweightedrecall']
+                uploaddic['globalprecision'] = metric1['globalprecision']
+                uploaddic['classweightedprecision'] = metric1['classweightedprecision']
+                uploaddic['globalf1score'] = metric1['globalf1score']
+                uploaddic['classweightedf1score'] = metric1['classweightedf1score']
+
+                uploaddic['accuracy2'] = metric2["accuracy"]
+                uploaddic['globalrecall2'] = metric2["accuracy"]
+                uploaddic['classweightedrecall2'] = metric2["classweightedrecall"]
+                uploaddic['globalprecision2'] = metric2["globalprecision"]
+                uploaddic['classweightedprecision2'] = metric2["classweightedprecision"]
+                uploaddic['globalf1score2'] = metric2["globalf1score"]
+                uploaddic['classweightedf1score2'] = metric2["classweightedf1score"]
 
                 uploaddic['fairness_score1'] = result1['fairness_score']
                 uploaddic['overfitting'] = result1['overfitting']

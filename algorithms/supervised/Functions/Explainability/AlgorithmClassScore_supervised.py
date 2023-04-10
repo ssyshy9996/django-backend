@@ -2,9 +2,11 @@ def get_algorithm_class_score_supervised(model=not None, training_dataset=None, 
     import collections
     import pandas
     import numpy as np
+    import joblib as jb
     info, result = collections.namedtuple(
         'info', 'description value'), collections.namedtuple('result', 'score properties')
-    model, clf_type_score = pandas.read_pickle(model), pandas.read_json(
+    model = pandas.read_pickle(model)
+    clf_type_score = pandas.read_json(
         mappings)["explainability"]["score_algorithm_class"]["clf_type_score"]["value"]
 
     clf_name = type(model).__name__

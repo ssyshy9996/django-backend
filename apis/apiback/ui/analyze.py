@@ -10,7 +10,50 @@ from sklearn import metrics
 import numpy as np
 import tensorflow as tf
 from apis.apiback.ui.dashboard import unsupervised_FinalScore, finalScore_supervised
-from ..public import save_scores, get_score
+from ..public import save_scores, get_score, save_metric, save_property, get_metric, get_property
+from algorithms.supervised.Functions.Accountability.AccountabilityScore_supervised import get_accountability_score_supervised
+from algorithms.supervised.Functions.Explainability.ExplainabilityScore_supervised import get_explainability_score_supervised
+from algorithms.supervised.Functions.Fairness.FarinessScore_supervised import get_fairness_score_supervised
+from algorithms.supervised.Functions.Robustness.Robustness_supervised import get_robustness_score_supervised
+from algorithms.unsupervised.Functions.Accountability.Accountability import analyse as get_accountability_score_unsupervised
+from algorithms.unsupervised.Functions.Explainability.Explainability import analyse as get_explainability_score_unsupervised
+from algorithms.unsupervised.Functions.Fairness.Fairness import analyse as get_fairness_score_unsupervised
+from algorithms.unsupervised.Functions.Robustness.Robustness import analyse as get_robustness_score_unsupervised
+
+
+def get_performance_metrics_supervised(model, test_data, target_column):
+    import pandas as pd
+    import tensorflow as tf
+    import numpy as np
+    import sklearn.metrics as metrics
+    model = pd.read_pickle(model)
+    print("MODEL workign")
+    print("TEST DATA working")
+    if target_column:
+        X_test = test_data.drop(target_column, axis=1)
+        y_test = test_data[target_column]
+    else:
+        X_test = test_data.iloc[:, :DEFAULT_TARGET_COLUMN_INDEX]
+        y_test = test_data.reset_index(
+            drop=True).iloc[:, DEFAULT_TARGET_COLUMN_INDEX:]
+
+    y_true = y_test.values.flatten()
+    if (isinstance(model, tf.keras.Sequential)):
+        y_pred_proba = model.predict(X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+    else:
+        y_pred = model.predict(X_test).flatten()
+    labels = np.unique(np.array([y_pred, y_true]).flatten())
+
+    dict_performance_metrics = {"accuracy": round(metrics.accuracy_score(y_true, y_pred), 2),
+                                "global recall": round(metrics.recall_score(y_true, y_pred, labels=labels, average="micro"), 2),
+                                "class weighted recall": round(metrics.recall_score(y_true, y_pred, average="weighted"), 2),
+                                "global precision": round(metrics.precision_score(y_true, y_pred, labels=labels, average="micro"), 2),
+                                "class weighted precision": round(metrics.precision_score(y_true, y_pred, average="weighted"), 2),
+                                "global f1 score": round(metrics.f1_score(y_true, y_pred, average="micro"), 2),
+                                "class weighted f1 score": round(metrics.f1_score(y_true, y_pred, average="weighted"), 2)}
+
+    return dict_performance_metrics
 
 
 def get_properties_section(train_data, test_data, factsheet):
@@ -73,20 +116,20 @@ def get_performance_metrics(uploaddic, model, test_data, target_column):
         y_pred = model.predict(X_test).flatten()
         labels = np.unique(np.array([y_pred, y_true]).flatten())
 
-    uploaddic['accuracy'] = (
-        "%.2f" % metrics.accuracy_score(y_true, y_pred))
-    uploaddic['globalrecall'] = ("%.2f" % metrics.recall_score(
-        y_true, y_pred, labels=labels, average="micro"))
-    uploaddic['classweightedrecall'] = (
-        "%.2f" % metrics.recall_score(y_true, y_pred, average="weighted"))
-    uploaddic['globalprecision'] = ("%.2f" % metrics.precision_score(
-        y_true, y_pred, labels=labels, average="micro"))
-    uploaddic['classweightedprecision'] = (
-        "%.2f" % metrics.precision_score(y_true, y_pred, average="weighted"))
-    uploaddic['globalf1score'] = (
-        "%.2f" % metrics.f1_score(y_true, y_pred, average="micro"))
-    uploaddic['classweightedf1score'] = (
-        "%.2f" % metrics.f1_score(y_true, y_pred, average="weighted"))
+
+def get_factsheet_completeness_score(factsheet):
+    import pandas as pd
+    print("FACTSHEET: ", factsheet)
+    modelname = factsheet['properties']['methodology']['factsheet_completeness']['model_name'][1]
+    purposedesc = factsheet['properties']['methodology']['factsheet_completeness']['purpose_description'][1]
+    trainingdatadesc = factsheet['properties']['methodology']['factsheet_completeness']['training_data_description'][1]
+    modelinfo = factsheet['properties']['methodology']['factsheet_completeness']['model_information'][1]
+    authors = factsheet['properties']['methodology']['factsheet_completeness']['authors'][1]
+    contactinfo = factsheet['properties']['methodology']['factsheet_completeness']['contact_information'][1]
+
+    dict_factsheet = {'modelname': modelname, 'purposedesc': purposedesc, 'trainingdatadesc': trainingdatadesc,
+                      'modelinfo': modelinfo, 'authors': authors, 'contactinfo': contactinfo}
+    return dict_factsheet
 
 
 def save_score(solution):
@@ -138,13 +181,198 @@ def save_score(solution):
     path_traindata = solution.training_file
     path_factsheet = solution.factsheet_file
     path_outliersdata = solution.outlier_data_file
+    target_column = solution.target_column
     soulutionType = solution.solution_type
     weights_metrics = solution.weights_metrics
     weights_pillars = solution.weights_pillars
     mappings_config = solution.metrics_mappings_file
 
-    path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars, mappings_config = save_files_return_paths(
-        f"{path_module}", f"{path_traindata}", f"{path_testdata}", f"{path_factsheet}", f"{path_outliersdata}", f"{weights_metrics}", f"{weights_pillars}", f"{mappings_config}")
+    path_module, path_traindata, path_testdata, path_factsheet, path_outliersdata, weights_metrics, weights_pillars, mappings_config, target_column = save_files_return_paths(
+        f"{path_module}", f"{path_traindata}", f"{path_testdata}", f"{path_factsheet}", f"{path_outliersdata}", f"{weights_metrics}", f"{weights_pillars}", f"{mappings_config}", f"{target_column}")
+
+    # -- get properties for pillar
+    explain = {}
+    fairness = {}
+    robust = {}
+    methodology = {}
+    if (solution.solution_type == 'supervised'):
+        explain = get_explainability_score_supervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        robust = get_robustness_score_supervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        methodology = get_accountability_score_supervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        fairness = get_fairness_score_supervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        pass
+    else:
+        fairness = get_fairness_score_unsupervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        explain = get_explainability_score_unsupervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        methodology = get_accountability_score_unsupervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+        robust = get_robustness_score_unsupervised(
+            path_module, path_traindata, path_testdata, path_factsheet, mappings_config, target_column, path_outliersdata)
+
+    # for fairness
+    try:
+        uploaddic['underfitting_property'] = fairness[1]['underfitting']
+    except:
+        uploaddic['underfitting_property'] = None
+    try:
+        uploaddic['overfitting_property'] = fairness[1]['overfitting']
+    except:
+        uploaddic['overfitting_property'] = None
+    try:
+        uploaddic['statistical_parity_difference_property'] = fairness[1]['statistical_parity_difference']
+    except:
+        uploaddic['statistical_parity_difference_property'] = None
+    try:
+        uploaddic['equal_opportunity_difference_property'] = fairness[1]['equal_opportunity_difference']
+    except:
+        uploaddic['equal_opportunity_difference_property'] = None
+    try:
+        uploaddic['average_odds_difference_property'] = fairness[1]['average_odds_difference']
+    except:
+        uploaddic['average_odds_difference_property'] = None
+    try:
+        uploaddic['disparate_impact_property'] = fairness[1]['disparate_impact']
+    except:
+        uploaddic['disparate_impact_property'] = None
+    try:
+        uploaddic['class_balance_property'] = fairness[1]['class_balance']
+    except:
+        uploaddic['class_balance_property'] = None
+    # for explainability
+    try:
+        uploaddic['algorithm_class_property'] = explain[1]['algorithm_class']
+    except:
+        uploaddic['algorithm_class_property'] = None
+    try:
+        uploaddic['correlated_features_property'] = explain[1]['correlated_features']
+    except:
+        uploaddic['correlated_features_property'] = None
+    try:
+        uploaddic['model_size_property'] = explain[1]['model_size']
+    except:
+        uploaddic['model_size_property'] = None
+    try:
+        uploaddic['feature_relevance_property'] = explain[1]['feature_relevance']
+    except:
+        uploaddic['feature_relevance_property'] = None
+    try:
+        uploaddic['permutation_feature_importance_property'] = explain[1]['permutation_feature_importance']
+    except:
+        uploaddic['permutation_feature_importance_property'] = None
+    # for methodology
+    try:
+        uploaddic['normalization_property'] = methodology[1]['normalization']
+    except:
+        uploaddic['normalization_property'] = None
+    try:
+        uploaddic['missing_data_property'] = methodology[1]['missing_data']
+    except:
+        uploaddic['missing_data_property'] = None
+    try:
+        uploaddic['regularization_property'] = methodology[1]['regularization']
+    except:
+        uploaddic['regularization_property'] = None
+    try:
+        uploaddic['train_test_split_property'] = methodology[1]['train_test_split']
+    except:
+        uploaddic['train_test_split_property'] = None
+    try:
+        uploaddic['factsheet_completeness_property'] = methodology[1]['factsheet_completeness']
+    except:
+        uploaddic['factsheet_completeness_property'] = None
+
+    # for robustness
+    try:
+        uploaddic['confidence_score_property'] = robust[1]['confidence_score']
+    except:
+        uploaddic['confidence_score_property'] = None
+    try:
+        uploaddic['clique_method_property'] = robust[1]['clique_method']
+    except:
+        uploaddic['clique_method_property'] = None
+    try:
+        uploaddic['clever_score_property'] = robust[1]['clever_score']
+    except:
+        uploaddic['clever_score_property'] = None
+    try:
+        uploaddic['er_fast_gradient_attack_property'] = robust[1]['er_fast_gradient_attack']
+    except:
+        uploaddic['er_fast_gradient_attack_property'] = None
+    try:
+        uploaddic['er_carlini_wagner_attack_property'] = robust[1]['er_carlini_wagner_attack']
+    except:
+        uploaddic['er_carlini_wagner_attack_property'] = None
+    try:
+        uploaddic['er_deepfool_attack_property'] = robust[1]['er_deepfool_attack']
+    except:
+        uploaddic['er_deepfool_attack_property'] = None
+    try:
+        uploaddic['loss_sensitivity_property'] = robust[1]['loss_sensitivity']
+    except:
+        uploaddic['loss_sensitivity_property'] = None
+
+    # -- end
+    test_data = pd.read_csv(path_testdata)
+    try:
+        uploaddic['accuracy'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["accuracy"]
+        print("Accuracy: ", uploaddic['accuracy'])
+    except:
+        uploaddic['accuracy'] = None
+        print("Accuracy ERROR")
+
+    try:
+        uploaddic['globalrecall'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["global recall"]
+        print("Gloabl Recall is: ", uploaddic['globalrecall'])
+    except:
+        uploaddic['globalrecall'] = None
+        print("Recall ERROR")
+    try:
+        uploaddic['classweightedrecall'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["class weighted recall"]
+        print("Classweighted Recall is: ",
+              uploaddic['classweightedrecall'])
+    except:
+        uploaddic['classweightedrecall'] = None
+        print("Classweighted Recall ERROR")
+    try:
+        uploaddic['globalprecision'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["global precision"]
+        print("Global Precision is: ", uploaddic['globalprecision'])
+    except:
+        uploaddic['globalprecision'] = None
+        print("Global Precision ERROR")
+    try:
+        uploaddic['classweightedprecision'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["class weighted precision"]
+        print("Classweighted Precision is:",
+              uploaddic['classweightedprecision'])
+    except:
+        uploaddic['classweightedprecision'] = None
+        print("Classweighted Precision ERROR")
+    try:
+        uploaddic['globalf1score'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["global f1 score"]
+        print("Global F1 Score is:", uploaddic['globalf1score'])
+    except:
+        uploaddic['globalf1score'] = None
+        print("Global F1 Score ERROR")
+    try:
+        uploaddic['classweightedf1score'] = get_performance_metrics_supervised(
+            model=path_module, test_data=test_data, target_column="Target")["class weighted f1 score"]
+        print("Classweightedf1score is:",
+              uploaddic['classweightedf1score'])
+
+    except:
+        uploaddic['classweightedf1score'] = None
+        print("Classweightedf1score- ERROR")
 
     try:
         if (soulutionType == 'unsupervised'):
@@ -232,6 +460,8 @@ def save_score(solution):
             uploaddic['permutation_feature_importance'] = None
 
         save_scores(solution.id, uploaddic)
+        save_metric(solution.id, uploaddic)
+        save_property(solution.id, uploaddic)
 
     except Exception as e:
         print('save score error:', e)
@@ -259,8 +489,12 @@ class analyze(APIView):
             test_data = solution.test_file
             train_data = solution.training_file
             factsheet = solution.factsheet_file
-            test_data, train_data, factsheet, model_data, weights_pillars, weights_metrics = save_files_return_paths(
-                f"{test_data}", f"{train_data}", f"{factsheet}", f"{model_data}", f"{weights_pillars}", f"{weights_metrics}")
+            mappings = solution.metrics_mappings_file
+            target_column = solution.target_column
+            outliers_data = solution.outlier_data_file
+            test_data, train_data, factsheet, model_data, weights_pillars, weights_metrics, mappings, target_column, outliers_data = save_files_return_paths(
+                f"{test_data}", f"{train_data}", f"{factsheet}", f"{model_data}", f"{weights_pillars}", f"{weights_metrics}", f"{mappings}", f"{target_column}", f"{outliers_data}")
+
             test_data = pd.read_csv(test_data)
             train_data = pd.read_csv(train_data)
             factsheet = pd.read_json(factsheet)
@@ -344,36 +578,35 @@ class analyze(APIView):
 
             uploaddic['ScenarioName'] = solution.solution_name
             uploaddic['Description'] = solution.description
+
             if (solution.solution_type == 'supervised'):
                 data = get_properties_section(
                     train_data, test_data, factsheet)
                 uploaddic['ModelType'] = data[data.columns[1]][0]
                 uploaddic['TrainTestSplit'] = data[data.columns[1]][1]
                 uploaddic['DataSize'] = data[data.columns[1]][2]
-                uploaddic['NormalizationTechnique'] = data[data.columns[1]][3]
-                uploaddic['NumberofFeatures'] = data[data.columns[1]][4]
+                uploaddic['RegularizationTechnique'] = data[data.columns[1]][3]
+                uploaddic['NormalizationTechnique'] = data[data.columns[1]][4]
+                uploaddic['NumberofFeatures'] = data[data.columns[1]][5]
             else:
                 data = get_properties_section_unsupervised(
                     train_data, test_data, factsheet)
-                # uploaddic['ModelType'] = data[data.columns[1]][0]
-                uploaddic['TrainTestSplit'] = data[data.columns[1]][0]
-                uploaddic['DataSize'] = data[data.columns[1]][1]
-                uploaddic['NormalizationTechnique'] = data[data.columns[1]][2]
-                uploaddic['NumberofFeatures'] = data[data.columns[1]][3]
+                uploaddic['ModelType'] = data[data.columns[1]][0]
+                uploaddic['TrainTestSplit'] = data[data.columns[1]][1]
+                uploaddic['DataSize'] = data[data.columns[1]][2]
+                uploaddic['RegularizationTechnique'] = data[data.columns[1]][3]
+                uploaddic['NormalizationTechnique'] = data[data.columns[1]][4]
+                # uploaddic['NumberofFeatures'] = data[data.columns[1]][5]
 
-            # if (solution.solution_type == 'supervised'):
-            #     model_data = pd.read_pickle(model_data)
-            # else:
-            #     import joblib
-            #     model_data = joblib.load(model_data)
-
-            # get_performance_metrics(
-            #     uploaddic, model_data, test_data, target_column)
             try:
-                data = get_score(solution.id)
-                data.update(uploaddic)
-                print('dat:', data)
-                return Response(data, status=200)
+                score_data = get_score(solution.id)
+                property_data = get_property(solution.id)
+                metric_data = get_metric(solution.id)
+                uploaddic.update(score_data)
+                uploaddic.update(property_data)
+                uploaddic.update(metric_data)
+                print('dat:', uploaddic)
+                return Response(uploaddic, status=200)
 
             except Exception as e:
                 print('which error?', e)
